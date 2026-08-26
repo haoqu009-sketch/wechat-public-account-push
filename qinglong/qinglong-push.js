@@ -684,6 +684,16 @@ const tianApiService = {
  * 日期工具服务
  */
 const dateUtils = {
+  selectAnniversaryFestival(list = []) {
+    return list.find((festival) => {
+      const name = String(festival?.name || '')
+      const type = String(festival?.type || '')
+      const isBirthday = /生日|诞辰/.test(`${name}${type}`)
+      const isAnniversary = /周年|纪念/.test(name) || /周年|纪念/.test(type)
+      return !isBirthday && isAnniversary
+    })
+  },
+
   sortBirthdayTime(list) {
     list = JSON.parse(JSON.stringify(list))
     list.forEach((item) => {
@@ -1214,9 +1224,7 @@ const dataAggregationService = {
         }
         const nextFestival = festivalsToShow[0]
         const secondFestival = festivalsToShow[1]
-        const anniversaryFestival = festivalsToShow.find(festival => (
-          festival.type === '纪念日' || /周年|纪念/.test(festival.name)
-        ))
+        const anniversaryFestival = dateUtils.selectAnniversaryFestival(festivalsToShow)
         data.next_festival = { value: formatFestival(nextFestival) }
         data.second_festival = { value: formatFestival(secondFestival) }
         data.anniversary_festival = { value: formatFestival(anniversaryFestival) }
@@ -1460,6 +1468,7 @@ module.exports = {
   pushService,
   buildWechatSafeTemplateData,
   splitWechatField,
+  dateUtils,
   DAILY_BILINGUAL_QUOTES,
   ALL_CONFIG
 }
