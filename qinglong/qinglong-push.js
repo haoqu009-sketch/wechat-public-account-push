@@ -418,8 +418,8 @@ const validateTemplateConfig = () => {
     const validVariables = ['date', 'city', 'weather', 'max_temperature', 'min_temperature',
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
-      'chinese_note', 'english_note', 'd', 'c', 'w', 't', 'f', 'x', 'l',
-      'n1', 'n2', 'q1', 'q2', 'e1', 'e2', 'm1', 'm2']
+      'chinese_note', 'english_note', 'a', 'b', 'x', 'l', 'n1', 'n2',
+      'q1', 'q2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -876,7 +876,6 @@ const buildWechatSafeTemplateData = (templateData) => {
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
   const [q1, q2Raw] = splitWechatField(read('chinese_note') || dailyFallback.quote.cn)
-  const [e1, e2] = splitWechatField(read('english_note') || dailyFallback.quote.en)
   const [m1, m2Raw] = splitWechatField(read('moment_copyrighting') || dailyFallback.moment)
   const q2 = q2Raw || '愿今天也有新的收获'
   const momentSource = read('moment_source')
@@ -888,22 +887,21 @@ const buildWechatSafeTemplateData = (templateData) => {
   const wind = windDirection && windScale
     ? `${windDirection}·${windScale}级`
     : '风力暂未获取'
+  const compactWindDirection = windDirection.replace(/风$/, '')
+  const compactWeather = weather && minTemperature && maxTemperature && compactWindDirection && windScale
+    ? `${weather} ${minTemperature}~${maxTemperature}℃ ${compactWindDirection}${windScale}级`
+    : [weather, temperature, wind].filter(Boolean).join(' ')
   const loveDay = read('love_day')
 
   return {
-    d: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay}`) },
-    c: { value: fitWechatField(city, '哈尔滨') },
-    w: { value: fitWechatField(weather, '天气暂未获取') },
-    t: { value: fitWechatField(temperature) },
-    f: { value: fitWechatField(wind) },
+    a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
+    b: { value: fitWechatField(compactWeather, '天气暂未获取') },
     x: { value: fitWechatField(buildWeatherCare(weather, minTemperature, maxTemperature)) },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
     n1: { value: fitWechatField(read('next_festival'), '重要纪念日待设置') },
     n2: { value: fitWechatField(read('second_festival'), '愿每个重要日子都被记住') },
     q1: { value: q1 },
     q2: { value: q2 },
-    e1: { value: e1 },
-    e2: { value: e2 },
     m1: { value: m1 },
     m2: { value: m2 }
   }
@@ -922,7 +920,7 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const shortFieldNames = ['d', 'c', 'w', 't', 'f', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'e1', 'e2', 'm1', 'm2']
+    const shortFieldNames = ['a', 'b', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'm1', 'm2']
     const fieldLengths = Object.fromEntries(shortFieldNames.map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
