@@ -96,6 +96,36 @@ if (Array.isArray(ALL_CONFIG.USER_INFO) && ALL_CONFIG.USER_INFO.length === 1) {
       process.exit(1)
     }
   }
+
+  // 在保留主接收人的基础上，允许通过独立 Secret 增加其他微信测试用户。
+  const additionalOpenIdsRaw = (process.env.ADDITIONAL_USER_OPENIDS || '').trim()
+  if (additionalOpenIdsRaw) {
+    let additionalOpenIds = []
+    try {
+      const parsed = JSON.parse(additionalOpenIdsRaw)
+      additionalOpenIds = Array.isArray(parsed) ? parsed : [parsed]
+    } catch (error) {
+      additionalOpenIds = additionalOpenIdsRaw.split(/[\s,;]+/)
+    }
+
+    const existingOpenIds = new Set([String(user.id || '').trim()])
+    const uniqueAdditionalOpenIds = additionalOpenIds
+      .map(id => String(id || '').trim())
+      .filter((id) => {
+        if (id.length < 20 || existingOpenIds.has(id)) return false
+        existingOpenIds.add(id)
+        return true
+      })
+
+    uniqueAdditionalOpenIds.forEach((id, index) => {
+      const additionalUser = JSON.parse(JSON.stringify(user))
+      additionalUser.id = id
+      additionalUser.name = `接收人${index + 2}`
+      ALL_CONFIG.USER_INFO.push(additionalUser)
+    })
+
+    console.log(`✅ 已加载额外微信接收人 ${uniqueAdditionalOpenIds.length} 位`)
+  }
 }
 
 // ==================== 基础依赖 ====================
