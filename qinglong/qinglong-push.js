@@ -38,11 +38,27 @@ const ALL_CONFIG = (() => {
   return config
 })()
 
-// 允许部署环境单独覆盖单用户的 OpenID，避免为更换接收人而重建整份 ALL_CONFIG。
-const USER_OPENID_OVERRIDE = (process.env.USER_OPENID || '').trim()
-if (USER_OPENID_OVERRIDE && Array.isArray(ALL_CONFIG.USER_INFO) && ALL_CONFIG.USER_INFO.length === 1) {
-  ALL_CONFIG.USER_INFO[0].id = USER_OPENID_OVERRIDE
-  console.log('✅ 已从独立 Secret 加载接收人 OpenID')
+// 允许部署环境覆盖单用户的常用字段，敏感项可独立保存为 GitHub Secrets。
+if (Array.isArray(ALL_CONFIG.USER_INFO) && ALL_CONFIG.USER_INFO.length === 1) {
+  const user = ALL_CONFIG.USER_INFO[0]
+  const overrides = {
+    id: (process.env.USER_OPENID || '').trim(),
+    wechatTemplateId: (process.env.WECHAT_TEMPLATE_ID || '').trim(),
+    city: (process.env.USER_CITY || '').trim(),
+    weatherCityCode: (process.env.WEATHER_CITY_CODE || '').trim()
+  }
+
+  const appliedFields = []
+  for (const [field, value] of Object.entries(overrides)) {
+    if (value) {
+      user[field] = value
+      appliedFields.push(field)
+    }
+  }
+
+  if (appliedFields.length > 0) {
+    console.log(`✅ 已加载部署覆盖配置: ${appliedFields.join(', ')}`)
+  }
 }
 
 // ==================== 基础依赖 ====================
@@ -717,6 +733,20 @@ const courseScheduleService = {
 
 // ==================== 推送服务 ====================
 
+const WECHAT_FIELD_COLORS = {
+  date: '#2F7D7A',
+  city: '#4A6FA5',
+  weather: '#E67E22',
+  max_temperature: '#E05666',
+  min_temperature: '#4A90E2',
+  wind_direction: '#5A8F7B',
+  wind_scale: '#7A9E7E',
+  birthday_message: '#E98CA6',
+  chinese_note: '#8E6BBE',
+  english_note: '#697386',
+  moment_copyrighting: '#C68B2C'
+}
+
 /**
  * 推送服务管理器
  */
@@ -729,12 +759,21 @@ const pushService = {
       throw new PushError('用户ID或模板ID缺失', 'MISSING_REQUIRED_FIELDS', { user: user.name })
     }
 
+    const wechatTemplateData = Object.fromEntries(
+      Object.entries(templateData).map(([key, item]) => [key, {
+        value: String(item?.value ?? ''),
+        color: user.showColor === false
+          ? '#173177'
+          : (item?.color || WECHAT_FIELD_COLORS[key] || '#5B6573')
+      }])
+    )
+
     const data = {
       touser: user.id,
       template_id: templateId,
       url: '',
-      topcolor: '#FF0000',
-      data: templateData
+      topcolor: '#E98CA6',
+      data: wechatTemplateData
     }
 
     const result = await httpClient.post(

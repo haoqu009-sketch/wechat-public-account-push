@@ -40,7 +40,6 @@ jobs:
     - name: 验证必需的环境变量
       env:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
-        USER_OPENID: ${{ secrets.USER_OPENID }}
       run: |
         echo "🔍 开始验证环境变量配置..."
 
@@ -129,6 +128,9 @@ jobs:
       env:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
         USER_OPENID: ${{ secrets.USER_OPENID }}
+        WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+        USER_CITY: 哈尔滨
+        WEATHER_CITY_CODE: '101050101'
 
     # 步骤 6: 运行结果通知
     - name: 运行结果通知
