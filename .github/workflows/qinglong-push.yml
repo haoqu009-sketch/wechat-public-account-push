@@ -129,8 +129,10 @@ jobs:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
         USER_OPENID: ${{ secrets.USER_OPENID }}
         WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+        PERSONAL_DATES: ${{ secrets.PERSONAL_DATES }}
         USER_CITY: 哈尔滨
         WEATHER_CITY_CODE: '101050101'
+        TZ: Asia/Shanghai
 
     # 步骤 6: 运行结果通知
     - name: 运行结果通知

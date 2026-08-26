@@ -59,6 +59,43 @@ if (Array.isArray(ALL_CONFIG.USER_INFO) && ALL_CONFIG.USER_INFO.length === 1) {
   if (appliedFields.length > 0) {
     console.log(`✅ 已加载部署覆盖配置: ${appliedFields.join(', ')}`)
   }
+
+  // 纪念日单独存放在 GitHub Secret，后续修改日期无需重建整份 ALL_CONFIG。
+  const personalDatesRaw = (process.env.PERSONAL_DATES || '').trim()
+  if (personalDatesRaw) {
+    try {
+      const personalDates = JSON.parse(personalDatesRaw)
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/
+      const monthDayPattern = /^\d{2}-\d{2}$/
+
+      if (personalDates.loveStart) {
+        if (!datePattern.test(personalDates.loveStart)) {
+          throw new Error('loveStart 必须使用 YYYY-MM-DD 格式')
+        }
+        const customizedDateList = Array.isArray(user.customizedDateList)
+          ? user.customizedDateList.filter(item => item.keyword !== 'love_day')
+          : []
+        customizedDateList.push({ keyword: 'love_day', date: personalDates.loveStart })
+        user.customizedDateList = customizedDateList
+      }
+
+      if (Array.isArray(personalDates.festivals)) {
+        user.festivals = personalDates.festivals.map((item, index) => {
+          const name = String(item?.name || '').trim()
+          const date = String(item?.date || '').trim()
+          if (!name || !monthDayPattern.test(date)) {
+            throw new Error(`festivals[${index}] 必须包含 name 和 MM-DD 格式的 date`)
+          }
+          return { type: item.type || '纪念日', name, date }
+        })
+      }
+
+      console.log(`✅ 已加载个人日期配置（纪念日 ${user.festivals?.length || 0} 项）`)
+    } catch (error) {
+      console.error(`❌ 致命错误：PERSONAL_DATES 配置无效: ${error.message}`)
+      process.exit(1)
+    }
+  }
 }
 
 // ==================== 基础依赖 ====================
@@ -381,7 +418,8 @@ const validateTemplateConfig = () => {
     const validVariables = ['date', 'city', 'weather', 'max_temperature', 'min_temperature',
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
-      'chinese_note', 'english_note']
+      'chinese_note', 'english_note', 'd', 'c', 'w', 't', 'f', 'x', 'l',
+      'n1', 'n2', 'q1', 'q2', 'e1', 'e2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -752,42 +790,122 @@ const WECHAT_FIELD_COLORS = {
   inspiration: '#C68B2C'
 }
 
-const buildPolishedTemplateData = (templateData) => {
+const splitWechatField = (text, partCount = 2, limit = 18) => {
+  let remaining = String(text || '').replace(/\s+/g, ' ').trim()
+  const parts = []
+
+  while (remaining && parts.length < partCount) {
+    const characters = Array.from(remaining)
+    if (characters.length <= limit) {
+      parts.push(remaining)
+      remaining = ''
+      break
+    }
+
+    let cut = limit
+    const candidate = characters.slice(0, limit + 1).join('')
+    const lastSpace = candidate.lastIndexOf(' ')
+    if (lastSpace >= Math.floor(limit / 2)) cut = Array.from(candidate.slice(0, lastSpace)).length
+
+    parts.push(characters.slice(0, cut).join('').trim())
+    remaining = characters.slice(cut).join('').trim()
+  }
+
+  if (remaining && parts.length > 0) {
+    const last = Array.from(parts[parts.length - 1])
+    parts[parts.length - 1] = `${last.slice(0, limit - 1).join('')}…`
+  }
+
+  while (parts.length < partCount) parts.push('')
+  return parts
+}
+
+const fitWechatField = (text, fallback = '') => splitWechatField(text || fallback, 1, 18)[0]
+
+const DAILY_FALLBACK_QUOTES = [
+  { cn: '把普通的日子过得浪漫一些。', en: 'Make ordinary days romantic.' },
+  { cn: '慢慢来，好事总会在合适的时候发生。', en: 'Good things take time.' },
+  { cn: '保持热爱，奔赴下一场山海。', en: 'Stay curious and keep going.' },
+  { cn: '愿你眼里有光，心中有爱。', en: 'Keep light in your eyes.' },
+  { cn: '认真生活的人，自会被岁月温柔以待。', en: 'Life rewards a sincere heart.' },
+  { cn: '今天也要做一个快乐的小太阳。', en: 'Be your own sunshine today.' },
+  { cn: '每一个清晨，都是新的温柔开始。', en: 'Every morning is a new start.' }
+]
+
+const DAILY_FALLBACK_MOMENTS = [
+  '愿所有不期而遇，都是温柔的惊喜。',
+  '日子常新，未来不远，步履不停。',
+  '心有小暖，岁月不寒。',
+  '好好生活，慢慢相遇。',
+  '总有一束光，会照亮你前行的方向。',
+  '把今天过好，就是对明天最好的期待。',
+  '愿平凡的日子里，也有细碎的美好。'
+]
+
+const getDailyFallback = () => {
+  const seed = Number(dayjs().format('YYYYMMDD'))
+  return {
+    quote: DAILY_FALLBACK_QUOTES[seed % DAILY_FALLBACK_QUOTES.length],
+    moment: DAILY_FALLBACK_MOMENTS[seed % DAILY_FALLBACK_MOMENTS.length]
+  }
+}
+
+const buildWeatherCare = (weather, minTemperature, maxTemperature) => {
+  const description = String(weather || '')
+  const min = Number.parseFloat(minTemperature)
+  const max = Number.parseFloat(maxTemperature)
+
+  if (/雷/.test(description)) return '雷雨时注意安全，减少外出'
+  if (/雨/.test(description)) return '记得带伞，路滑慢一点走'
+  if (/雪/.test(description)) return '注意保暖，路面结冰要小心'
+  if (/霾|雾/.test(description)) return '能见度较低，出门戴好口罩'
+  if (Number.isFinite(max) && max >= 30) return '天气偏热，记得及时补水'
+  if (Number.isFinite(min) && min <= 0) return '气温较低，多穿一点别着凉'
+  if (/晴/.test(description)) return '阳光正好，也要记得注意防晒'
+  if (/阴|云/.test(description)) return '天气舒缓，愿心情也轻轻松松'
+  return '照顾好自己，愿今天一切顺利'
+}
+
+const buildWechatSafeTemplateData = (templateData) => {
   const read = (key) => String(templateData[key]?.value ?? '').trim()
-  const date = read('date')
+  const dailyFallback = getDailyFallback()
   const city = read('city')
   const weather = read('weather')
   const minTemperature = read('min_temperature')
   const maxTemperature = read('max_temperature')
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
-  const chineseNote = read('chinese_note')
-  const englishNote = read('english_note')
-
-  const temperatureLine = minTemperature && maxTemperature
-    ? `${minTemperature}℃ ～ ${maxTemperature}℃`
+  const [q1, q2Raw] = splitWechatField(read('chinese_note') || dailyFallback.quote.cn)
+  const [e1, e2] = splitWechatField(read('english_note') || dailyFallback.quote.en)
+  const [m1, m2Raw] = splitWechatField(read('moment_copyrighting') || dailyFallback.moment)
+  const q2 = q2Raw || '愿今天也有新的收获'
+  const momentSource = read('moment_source')
+  const m2 = m2Raw || fitWechatField(momentSource ? `—— ${momentSource}` : '—— 愿你今天开心')
+  const weekDay = '日一二三四五六'[dayjs().day()]
+  const temperature = minTemperature && maxTemperature
+    ? `${minTemperature}℃～${maxTemperature}℃`
     : '温度暂未获取'
-  const windLine = windDirection && windScale
-    ? `${windDirection} · ${windScale}级`
+  const wind = windDirection && windScale
+    ? `${windDirection}·${windScale}级`
     : '风力暂未获取'
+  const loveDay = read('love_day')
 
   return {
-    ...templateData,
-    overview: {
-      value: [date, city].filter(Boolean).join(' · ') || '愿今天一切顺利'
-    },
-    weather_card: {
-      value: `${weather || '天气暂未获取'}\n${temperatureLine}\n${windLine}`
-    },
-    reminder: {
-      value: read('birthday_message') || '愿今天顺顺利利，所遇皆温柔。'
-    },
-    quote_card: {
-      value: [chineseNote, englishNote].filter(Boolean).join('\n') || '认真生活，也记得照顾好自己。'
-    },
-    inspiration: {
-      value: read('moment_copyrighting') || '愿今天有好天气，也有好心情。'
-    }
+    d: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay}`) },
+    c: { value: fitWechatField(city, '哈尔滨') },
+    w: { value: fitWechatField(weather, '天气暂未获取') },
+    t: { value: fitWechatField(temperature) },
+    f: { value: fitWechatField(wind) },
+    x: { value: fitWechatField(buildWeatherCare(weather, minTemperature, maxTemperature)) },
+    l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
+    n1: { value: fitWechatField(read('next_festival'), '重要纪念日待设置') },
+    n2: { value: fitWechatField(read('second_festival'), '愿每个重要日子都被记住') },
+    q1: { value: q1 },
+    q2: { value: q2 },
+    e1: { value: e1 },
+    e2: { value: e2 },
+    m1: { value: m1 },
+    m2: { value: m2 }
   }
 }
 
@@ -803,7 +921,18 @@ const pushService = {
       throw new PushError('用户ID或模板ID缺失', 'MISSING_REQUIRED_FIELDS', { user: user.name })
     }
 
-    const polishedTemplateData = buildPolishedTemplateData(templateData)
+    const polishedTemplateData = buildWechatSafeTemplateData(templateData)
+    const shortFieldNames = ['d', 'c', 'w', 't', 'f', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'e1', 'e2', 'm1', 'm2']
+    const fieldLengths = Object.fromEntries(shortFieldNames.map(key => [
+      key,
+      Array.from(String(polishedTemplateData[key]?.value || '')).length
+    ]))
+    const overflowFields = Object.entries(fieldLengths).filter(([, length]) => length > 18)
+    if (overflowFields.length > 0) {
+      throw new PushError('微信模板字段超过18字符安全限制', 'WECHAT_FIELD_TOO_LONG', { overflowFields })
+    }
+    logInfo('微信短字段校验完成（均不超过18字符）', fieldLengths)
+
     const wechatTemplateData = Object.fromEntries(
       Object.entries(polishedTemplateData).map(([key, item]) => [key, {
         value: String(item?.value ?? ''),
@@ -1029,7 +1158,17 @@ const dataAggregationService = {
           ? sortedFestivals.slice(0, CONFIG.FESTIVALS_LIMIT)
           : sortedFestivals
 
+        const formatFestival = (festival) => {
+          if (!festival) return ''
+          const lunar = festival.useLunar ? '农历' : ''
+          return festival.diffDay === 0
+            ? `${festival.name}${lunar}就是今天`
+            : `${festival.name}${lunar}还有${festival.diffDay}天`
+        }
         const nextFestival = festivalsToShow[0]
+        const secondFestival = festivalsToShow[1]
+        data.next_festival = { value: formatFestival(nextFestival) }
+        data.second_festival = { value: formatFestival(secondFestival) }
         if (nextFestival && nextFestival.diffDay <= 30) {
           birthdayMessage = `距离${nextFestival.name}${nextFestival.useLunar ? '(农历)' : ''}还有${nextFestival.diffDay}天`
         }
@@ -1053,6 +1192,10 @@ const dataAggregationService = {
       const hitokoto = await hitokotoService.getHitokoto()
       if (!hitokoto.error) {
         data.moment_copyrighting = { value: hitokoto.content }
+        const source = [hitokoto.from_who, hitokoto.from]
+          .filter(value => value && value !== '未知')
+          .join(' · ')
+        data.moment_source = { value: source }
       }
 
       // 天行API - 早安心语（用户级配置）
@@ -1263,6 +1406,8 @@ module.exports = {
   // 导出测试用的函数
   weatherService,
   pushService,
+  buildWechatSafeTemplateData,
+  splitWechatField,
   ALL_CONFIG
 }
 
