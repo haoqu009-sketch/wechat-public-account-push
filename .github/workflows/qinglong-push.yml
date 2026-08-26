@@ -8,24 +8,30 @@ on:
     # 每天国际时间 23:30 运行, 即北京时间 7:30 运行
     - cron: '30 23 * * *'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: qinglong-wechat-push
+  cancel-in-progress: false
+
 jobs:
   validate-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     strategy:
       matrix:
-        node-version: [16.x]
+        node-version: [20.x]
 
     steps:
     # 步骤 1: 检出代码
     - name: 检出代码
-      uses: actions/checkout@v3
-      with:
-        ref: 'master'
+      uses: actions/checkout@v4
 
     # 步骤 2: 设置 Node.js 环境
     - name: 设置 Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
@@ -33,7 +39,7 @@ jobs:
     # 步骤 3: 环境变量验证
     - name: 验证必需的环境变量
       env:
-        ALL_CONFIG: ${{ secrets.ALL_CONFIG || vars.ALL_CONFIG }}
+        ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
       run: |
         echo "🔍 开始验证环境变量配置..."
 
@@ -109,7 +115,7 @@ jobs:
       working-directory: ./qinglong
       run: |
         echo "📦 正在安装青龙脚本依赖..."
-        npm install
+        npm install --omit=dev
         echo "✅ 依赖安装完成"
 
     # 步骤 5: 运行青龙推送脚本
@@ -120,7 +126,7 @@ jobs:
         node qinglong-push.js
         echo "✅ 推送任务完成"
       env:
-        ALL_CONFIG: ${{ secrets.ALL_CONFIG || vars.ALL_CONFIG }}
+        ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
 
     # 步骤 6: 运行结果通知
     - name: 运行结果通知
