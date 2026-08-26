@@ -22,16 +22,16 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [24.x]
 
     steps:
     # 步骤 1: 检出代码
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     # 步骤 2: 设置 Node.js 环境
     - name: 设置 Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
@@ -54,7 +54,7 @@ jobs:
 
         # 验证 JSON 格式
         echo "🔍 验证 ALL_CONFIG JSON 格式..."
-        echo "${ALL_CONFIG}" > /tmp/config.json
+        printf '%s' "${ALL_CONFIG}" > /tmp/config.json
         python3 -c "
         import json
         import sys
