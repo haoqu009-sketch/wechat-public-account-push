@@ -419,7 +419,7 @@ const validateTemplateConfig = () => {
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
       'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
-      'a', 'b', 'l', 'n2', 'q1', 'q2', 'm1']
+      'a', 'b', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -794,7 +794,8 @@ const WECHAT_FIELD_COLORS = {
   n2: '#9B6BA3',
   q1: '#7251A3',
   q2: '#66728B',
-  m1: '#A66A2C'
+  m1: '#A66A2C',
+  m2: '#8B7355'
 }
 
 /**
@@ -913,14 +914,15 @@ const buildWechatSafeTemplateData = (templateData) => {
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
   const q1 = fitWechatField(read('chinese_note'), dailyFallback.quote.cn)
-  const englishLines = splitWechatField(read('english_note') || dailyFallback.quote.en, 2, 22)
-    .filter(Boolean)
-  const q2 = englishLines.join('\n')
+  const q2 = (read('english_note') || dailyFallback.quote.en)
+    .replace(/\s+/g, ' ')
+    .trim()
   const poetryContent = (read('poetry_content') || dailyFallback.poem.content)
     .replace(/\s+/g, ' ')
     .trim()
   const poetrySource = read('poetry_source') || dailyFallback.poem.source
-  const m1 = `${poetryContent}\n—— ${poetrySource}`
+  const m1 = poetryContent
+  const m2 = `—— ${poetrySource}`
   const weekDay = '日一二三四五六'[dayjs().day()]
   const temperature = minTemperature && maxTemperature
     ? `${minTemperature}℃～${maxTemperature}℃`
@@ -941,7 +943,8 @@ const buildWechatSafeTemplateData = (templateData) => {
     n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
     q1: { value: q1 },
     q2: { value: q2 },
-    m1: { value: m1 }
+    m1: { value: m1 },
+    m2: { value: m2 }
   }
 }
 
@@ -958,16 +961,17 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 18, q2: 45, m1: 90 }
+    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 18, q2: 36, m1: 60, m2: 40 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
+    const lineLimits = { q2: 36, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
-    )).filter(item => item.length > (item.key === 'q2' ? 22 : (item.key === 'm1' ? 40 : 18)))
+    )).filter(item => item.length > (lineLimits[item.key] || 18))
     if (overflowFields.length > 0 || overflowLines.length > 0) {
       throw new PushError('微信模板字段超过安全显示长度', 'WECHAT_FIELD_TOO_LONG', {
         overflowFields,
