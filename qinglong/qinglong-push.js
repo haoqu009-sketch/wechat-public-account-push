@@ -38,6 +38,13 @@ const ALL_CONFIG = (() => {
   return config
 })()
 
+// 允许部署环境单独覆盖单用户的 OpenID，避免为更换接收人而重建整份 ALL_CONFIG。
+const USER_OPENID_OVERRIDE = (process.env.USER_OPENID || '').trim()
+if (USER_OPENID_OVERRIDE && Array.isArray(ALL_CONFIG.USER_INFO) && ALL_CONFIG.USER_INFO.length === 1) {
+  ALL_CONFIG.USER_INFO[0].id = USER_OPENID_OVERRIDE
+  console.log('✅ 已从独立 Secret 加载接收人 OpenID')
+}
+
 // ==================== 基础依赖 ====================
 
 const axios = require('axios')

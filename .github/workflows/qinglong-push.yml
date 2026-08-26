@@ -40,6 +40,7 @@ jobs:
     - name: 验证必需的环境变量
       env:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+        USER_OPENID: ${{ secrets.USER_OPENID }}
       run: |
         echo "🔍 开始验证环境变量配置..."
 
@@ -127,6 +128,7 @@ jobs:
         echo "✅ 推送任务完成"
       env:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+        USER_OPENID: ${{ secrets.USER_OPENID }}
 
     # 步骤 6: 运行结果通知
     - name: 运行结果通知
