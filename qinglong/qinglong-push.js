@@ -837,7 +837,10 @@ const splitWechatField = (text, partCount = 2, limit = 18) => {
 
   if (remaining && parts.length > 0) {
     const last = Array.from(parts[parts.length - 1])
-    parts[parts.length - 1] = `${last.slice(0, limit - 1).join('')}…`
+    let shortened = last.slice(0, limit - 1).join('')
+    const lastSpace = shortened.lastIndexOf(' ')
+    if (lastSpace >= Math.floor(limit / 2)) shortened = shortened.slice(0, lastSpace)
+    parts[parts.length - 1] = `${shortened.trim()}…`
   }
 
   while (parts.length < partCount) parts.push('')
@@ -906,8 +909,8 @@ const buildWechatSafeTemplateData = (templateData) => {
   const maxTemperature = read('max_temperature')
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
-  const [q1, q2Raw] = splitWechatField(read('chinese_note') || dailyFallback.quote.cn)
-  const q2 = q2Raw || '愿今天也有新的收获'
+  const q1 = fitWechatField(read('chinese_note'), dailyFallback.quote.cn)
+  const q2 = fitWechatField(read('english_note'), dailyFallback.quote.en)
   const m1 = fitWechatField(read('poetry_content'), dailyFallback.poem.content)
   const poetrySource = read('poetry_source') || dailyFallback.poem.source
   const m2 = fitWechatField(`—— ${poetrySource}`)
