@@ -419,7 +419,7 @@ const validateTemplateConfig = () => {
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
       'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
-      'a', 'b', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'm1', 'm2']
+      'a', 'b', 'l', 'n1', 'n2', 'q1', 'q2', 'q3', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -787,7 +787,17 @@ const WECHAT_FIELD_COLORS = {
   weather_card: '#E67E22',
   reminder: '#E98CA6',
   quote_card: '#8E6BBE',
-  inspiration: '#C68B2C'
+  inspiration: '#C68B2C',
+  a: '#B65C79',
+  b: '#D48232',
+  l: '#D15B83',
+  n1: '#B56A8D',
+  n2: '#9B6BA3',
+  q1: '#7251A3',
+  q2: '#66728B',
+  q3: '#66728B',
+  m1: '#A66A2C',
+  m2: '#8B7355'
 }
 
 /**
@@ -849,39 +859,25 @@ const splitWechatField = (text, partCount = 2, limit = 18) => {
 
 const fitWechatField = (text, fallback = '') => splitWechatField(text || fallback, 1, 18)[0]
 
-const DAILY_BILINGUAL_QUOTES = [
-  { cn: '心向阳光。', en: 'Face the sunshine.' },
-  { cn: '慢慢来，也很好。', en: 'Take your time.' },
-  { cn: '今天值得期待。', en: 'Today holds hope.' },
-  { cn: '保持好奇。', en: 'Stay curious.' },
-  { cn: '温柔且坚定。', en: 'Soft yet strong.' },
-  { cn: '向前一步。', en: 'One step forward.' },
-  { cn: '相信好事将至。', en: 'Good things await.' },
-  { cn: '享受此刻。', en: 'Enjoy this moment.' },
-  { cn: '心安便是归处。', en: 'Peace is home.' },
-  { cn: '让生活有光。', en: 'Let life shine.' },
-  { cn: '勇敢做自己。', en: 'Be truly you.' },
-  { cn: '每一步都算数。', en: 'Every step counts.' },
-  { cn: '小事也值得庆祝。', en: 'Small wins matter.' },
-  { cn: '愿你自在欢喜。', en: 'Choose simple joy.' },
-  { cn: '保持内心明亮。', en: 'Keep your light.' },
-  { cn: '好好爱自己。', en: 'Love yourself.' },
-  { cn: '别忘了微笑。', en: 'Remember to smile.' },
-  { cn: '答案正在路上。', en: 'Answers will come.' },
-  { cn: '认真过好今天。', en: 'Make today count.' },
-  { cn: '心有花开。', en: 'Let hearts bloom.' },
-  { cn: '未来依然可期。', en: 'Hope lies ahead.' },
-  { cn: '你比想象中勇敢。', en: 'You are brave.' },
-  { cn: '日子自有答案。', en: 'Time will answer.' },
-  { cn: '万事皆有回响。', en: 'All things echo.' },
-  { cn: '去拥抱新一天。', en: 'Embrace today.' },
-  { cn: '做自己的太阳。', en: 'Be your own sun.' },
-  { cn: '心怀热望。', en: 'Keep hope alive.' },
-  { cn: '生活值得热爱。', en: 'Love this life.' },
-  { cn: '平凡也有光。', en: 'Ordinary shines.' },
-  { cn: '一切都会刚刚好。', en: 'All will be well.' },
-  { cn: '今日亦是新生。', en: 'Begin again today.' }
-]
+const DAILY_BILINGUAL_QUOTES = require('./data/daily-bilingual-quotes')
+
+const invalidBilingualQuote = DAILY_BILINGUAL_QUOTES.find(quote => (
+  !quote.cn || !quote.en || Array.from(quote.cn).length > 18 || Array.from(quote.en).length > 36
+))
+const incompleteBilingualQuote = DAILY_BILINGUAL_QUOTES.find(quote => (
+  splitWechatField(quote.en, 2, 22).some(part => part.endsWith('…'))
+))
+const chineseQuoteSet = new Set(DAILY_BILINGUAL_QUOTES.map(quote => quote.cn))
+const englishQuoteSet = new Set(DAILY_BILINGUAL_QUOTES.map(quote => quote.en))
+if (
+  DAILY_BILINGUAL_QUOTES.length !== 365 ||
+  invalidBilingualQuote ||
+  incompleteBilingualQuote ||
+  chineseQuoteSet.size !== 365 ||
+  englishQuoteSet.size !== 365
+) {
+  throw new Error('本地双语句库校验失败：必须正好包含365组、不重复，并能在每日一句字段中完整展示')
+}
 
 const DAILY_FALLBACK_POEMS = [
   { content: '海上生明月，天涯共此时。', source: '张九龄《望月怀远》' },
@@ -901,27 +897,13 @@ const DAILY_FALLBACK_POEMS = [
 ]
 
 const getDailyFallback = () => {
-  const seed = Number(dayjs().format('YYYYMMDD'))
+  const today = dayjs()
+  const dayOfYear = today.diff(today.startOf('year'), 'day')
+  const quoteIndex = dayOfYear % DAILY_BILINGUAL_QUOTES.length
   return {
-    quote: DAILY_BILINGUAL_QUOTES[seed % DAILY_BILINGUAL_QUOTES.length],
-    poem: DAILY_FALLBACK_POEMS[seed % DAILY_FALLBACK_POEMS.length]
+    quote: DAILY_BILINGUAL_QUOTES[quoteIndex],
+    poem: DAILY_FALLBACK_POEMS[dayOfYear % DAILY_FALLBACK_POEMS.length]
   }
-}
-
-const buildWeatherCare = (weather, minTemperature, maxTemperature) => {
-  const description = String(weather || '')
-  const min = Number.parseFloat(minTemperature)
-  const max = Number.parseFloat(maxTemperature)
-
-  if (/雷/.test(description)) return '雷雨时注意安全，减少外出'
-  if (/雨/.test(description)) return '记得带伞，路滑慢一点走'
-  if (/雪/.test(description)) return '注意保暖，路面结冰要小心'
-  if (/霾|雾/.test(description)) return '能见度较低，出门戴好口罩'
-  if (Number.isFinite(max) && max >= 30) return '天气偏热，记得及时补水'
-  if (Number.isFinite(min) && min <= 0) return '气温较低，多穿一点别着凉'
-  if (/晴/.test(description)) return '阳光正好，也要记得注意防晒'
-  if (/阴|云/.test(description)) return '天气舒缓，愿心情也轻轻松松'
-  return '照顾好自己，愿今天一切顺利'
 }
 
 const buildWechatSafeTemplateData = (templateData) => {
@@ -934,10 +916,11 @@ const buildWechatSafeTemplateData = (templateData) => {
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
   const q1 = fitWechatField(read('chinese_note'), dailyFallback.quote.cn)
-  const q2 = fitWechatField(read('english_note'), dailyFallback.quote.en)
+  const [q2, q3] = splitWechatField(read('english_note') || dailyFallback.quote.en, 2, 22)
   const m1 = fitWechatField(read('poetry_content'), dailyFallback.poem.content)
   const poetrySource = read('poetry_source') || dailyFallback.poem.source
-  const m2 = fitWechatField(`—— ${poetrySource}`)
+  // 英文需要两行时省略作者，优先保证每日一句完整且版面疏朗。
+  const m2 = q3 ? '' : fitWechatField(`—— ${poetrySource}`)
   const weekDay = '日一二三四五六'[dayjs().day()]
   const temperature = minTemperature && maxTemperature
     ? `${minTemperature}℃～${maxTemperature}℃`
@@ -954,12 +937,12 @@ const buildWechatSafeTemplateData = (templateData) => {
   return {
     a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
     b: { value: fitWechatField(compactWeather, '天气暂未获取') },
-    x: { value: fitWechatField(buildWeatherCare(weather, minTemperature, maxTemperature)) },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
     n1: { value: fitWechatField(read('next_festival'), '重要纪念日待设置') },
     n2: { value: fitWechatField(read('second_festival'), '愿每个重要日子都被记住') },
     q1: { value: q1 },
     q2: { value: q2 },
+    q3: { value: q3 },
     m1: { value: m1 },
     m2: { value: m2 }
   }
@@ -978,16 +961,17 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const shortFieldNames = ['a', 'b', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'm1', 'm2']
-    const fieldLengths = Object.fromEntries(shortFieldNames.map(key => [
+    const fieldLimits = { a: 18, b: 18, l: 18, n1: 18, n2: 18, q1: 18, q2: 22, q3: 22, m1: 18, m2: 18 }
+    const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
-    const overflowFields = Object.entries(fieldLengths).filter(([, length]) => length > 18)
+    const overflowFields = Object.entries(fieldLengths)
+      .filter(([key, length]) => length > fieldLimits[key])
     if (overflowFields.length > 0) {
-      throw new PushError('微信模板字段超过18字符安全限制', 'WECHAT_FIELD_TOO_LONG', { overflowFields })
+      throw new PushError('微信模板字段超过安全显示长度', 'WECHAT_FIELD_TOO_LONG', { overflowFields })
     }
-    logInfo('微信短字段校验完成（均不超过18字符）', fieldLengths)
+    logInfo('微信字段完整性校验完成', fieldLengths)
 
     const wechatTemplateData = Object.fromEntries(
       Object.entries(polishedTemplateData).map(([key, item]) => [key, {
