@@ -5,8 +5,8 @@ name: qinglong-wechat-push
 on:
   workflow_dispatch:
   schedule:
-    # 每天国际时间 22:00 运行，即北京时间次日 06:00 运行
-    - cron: '0 22 * * *'
+    # 每天国际时间 21:17 运行，即北京时间次日 05:17 运行
+    - cron: '17 21 * * *'
 
 permissions:
   contents: read
