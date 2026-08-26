@@ -849,14 +849,38 @@ const splitWechatField = (text, partCount = 2, limit = 18) => {
 
 const fitWechatField = (text, fallback = '') => splitWechatField(text || fallback, 1, 18)[0]
 
-const DAILY_FALLBACK_QUOTES = [
-  { cn: '把普通的日子过得浪漫一些。', en: 'Make ordinary days romantic.' },
-  { cn: '慢慢来，好事总会在合适的时候发生。', en: 'Good things take time.' },
-  { cn: '保持热爱，奔赴下一场山海。', en: 'Stay curious and keep going.' },
-  { cn: '愿你眼里有光，心中有爱。', en: 'Keep light in your eyes.' },
-  { cn: '认真生活的人，自会被岁月温柔以待。', en: 'Life rewards a sincere heart.' },
-  { cn: '今天也要做一个快乐的小太阳。', en: 'Be your own sunshine today.' },
-  { cn: '每一个清晨，都是新的温柔开始。', en: 'Every morning is a new start.' }
+const DAILY_BILINGUAL_QUOTES = [
+  { cn: '心向阳光。', en: 'Face the sunshine.' },
+  { cn: '慢慢来，也很好。', en: 'Take your time.' },
+  { cn: '今天值得期待。', en: 'Today holds hope.' },
+  { cn: '保持好奇。', en: 'Stay curious.' },
+  { cn: '温柔且坚定。', en: 'Soft yet strong.' },
+  { cn: '向前一步。', en: 'One step forward.' },
+  { cn: '相信好事将至。', en: 'Good things await.' },
+  { cn: '享受此刻。', en: 'Enjoy this moment.' },
+  { cn: '心安便是归处。', en: 'Peace is home.' },
+  { cn: '让生活有光。', en: 'Let life shine.' },
+  { cn: '勇敢做自己。', en: 'Be truly you.' },
+  { cn: '每一步都算数。', en: 'Every step counts.' },
+  { cn: '小事也值得庆祝。', en: 'Small wins matter.' },
+  { cn: '愿你自在欢喜。', en: 'Choose simple joy.' },
+  { cn: '保持内心明亮。', en: 'Keep your light.' },
+  { cn: '好好爱自己。', en: 'Love yourself.' },
+  { cn: '别忘了微笑。', en: 'Remember to smile.' },
+  { cn: '答案正在路上。', en: 'Answers will come.' },
+  { cn: '认真过好今天。', en: 'Make today count.' },
+  { cn: '心有花开。', en: 'Let hearts bloom.' },
+  { cn: '未来依然可期。', en: 'Hope lies ahead.' },
+  { cn: '你比想象中勇敢。', en: 'You are brave.' },
+  { cn: '日子自有答案。', en: 'Time will answer.' },
+  { cn: '万事皆有回响。', en: 'All things echo.' },
+  { cn: '去拥抱新一天。', en: 'Embrace today.' },
+  { cn: '做自己的太阳。', en: 'Be your own sun.' },
+  { cn: '心怀热望。', en: 'Keep hope alive.' },
+  { cn: '生活值得热爱。', en: 'Love this life.' },
+  { cn: '平凡也有光。', en: 'Ordinary shines.' },
+  { cn: '一切都会刚刚好。', en: 'All will be well.' },
+  { cn: '今日亦是新生。', en: 'Begin again today.' }
 ]
 
 const DAILY_FALLBACK_POEMS = [
@@ -879,7 +903,7 @@ const DAILY_FALLBACK_POEMS = [
 const getDailyFallback = () => {
   const seed = Number(dayjs().format('YYYYMMDD'))
   return {
-    quote: DAILY_FALLBACK_QUOTES[seed % DAILY_FALLBACK_QUOTES.length],
+    quote: DAILY_BILINGUAL_QUOTES[seed % DAILY_BILINGUAL_QUOTES.length],
     poem: DAILY_FALLBACK_POEMS[seed % DAILY_FALLBACK_POEMS.length]
   }
 }
@@ -1213,12 +1237,11 @@ const dataAggregationService = {
         data[key] = { value: days.toString() }
       }
 
-      // 获取每日一句
-      const ciba = await cibaService.getCIBA()
-      if (!ciba.error) {
-        data.english_note = { value: ciba.content }
-        data.chinese_note = { value: ciba.note }
-      }
+      // 精选短中英句按日期轮换，保证两种语言都能在微信字段限制内完整显示。
+      const dailyQuote = getDailyFallback().quote
+      data.english_note = { value: dailyQuote.en }
+      data.chinese_note = { value: dailyQuote.cn }
+      logInfo('已加载本地精选短中英句')
 
       // 获取每日诗句；同时写入旧字段，兼容已有的本地模板。
       const poetry = await poetryService.getPoetry()
@@ -1442,6 +1465,7 @@ module.exports = {
   pushService,
   buildWechatSafeTemplateData,
   splitWechatField,
+  DAILY_BILINGUAL_QUOTES,
   ALL_CONFIG
 }
 
