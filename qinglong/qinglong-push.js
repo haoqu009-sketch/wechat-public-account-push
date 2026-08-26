@@ -744,7 +744,51 @@ const WECHAT_FIELD_COLORS = {
   birthday_message: '#E98CA6',
   chinese_note: '#8E6BBE',
   english_note: '#697386',
-  moment_copyrighting: '#C68B2C'
+  moment_copyrighting: '#C68B2C',
+  overview: '#2F7D7A',
+  weather_card: '#E67E22',
+  reminder: '#E98CA6',
+  quote_card: '#8E6BBE',
+  inspiration: '#C68B2C'
+}
+
+const buildPolishedTemplateData = (templateData) => {
+  const read = (key) => String(templateData[key]?.value ?? '').trim()
+  const date = read('date')
+  const city = read('city')
+  const weather = read('weather')
+  const minTemperature = read('min_temperature')
+  const maxTemperature = read('max_temperature')
+  const windDirection = read('wind_direction')
+  const windScale = read('wind_scale')
+  const chineseNote = read('chinese_note')
+  const englishNote = read('english_note')
+
+  const temperatureLine = minTemperature && maxTemperature
+    ? `${minTemperature}℃ ～ ${maxTemperature}℃`
+    : '温度暂未获取'
+  const windLine = windDirection && windScale
+    ? `${windDirection} · ${windScale}级`
+    : '风力暂未获取'
+
+  return {
+    ...templateData,
+    overview: {
+      value: [date, city].filter(Boolean).join(' · ') || '愿今天一切顺利'
+    },
+    weather_card: {
+      value: `${weather || '天气暂未获取'}\n${temperatureLine}\n${windLine}`
+    },
+    reminder: {
+      value: read('birthday_message') || '愿今天顺顺利利，所遇皆温柔。'
+    },
+    quote_card: {
+      value: [chineseNote, englishNote].filter(Boolean).join('\n') || '认真生活，也记得照顾好自己。'
+    },
+    inspiration: {
+      value: read('moment_copyrighting') || '愿今天有好天气，也有好心情。'
+    }
+  }
 }
 
 /**
@@ -759,8 +803,9 @@ const pushService = {
       throw new PushError('用户ID或模板ID缺失', 'MISSING_REQUIRED_FIELDS', { user: user.name })
     }
 
+    const polishedTemplateData = buildPolishedTemplateData(templateData)
     const wechatTemplateData = Object.fromEntries(
-      Object.entries(templateData).map(([key, item]) => [key, {
+      Object.entries(polishedTemplateData).map(([key, item]) => [key, {
         value: String(item?.value ?? ''),
         color: user.showColor === false
           ? '#173177'
