@@ -419,7 +419,7 @@ const validateTemplateConfig = () => {
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
       'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
-      'a', 'b', 'l', 'n1', 'n2', 'q1', 'q2', 'm1']
+      'a', 'b', 'l', 'n2', 'q1', 'q2', 'm1']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -791,7 +791,6 @@ const WECHAT_FIELD_COLORS = {
   a: '#B65C79',
   b: '#D48232',
   l: '#D15B83',
-  n1: '#B56A8D',
   n2: '#9B6BA3',
   q1: '#7251A3',
   q2: '#66728B',
@@ -808,7 +807,7 @@ const poetryService = {
         return httpClient.get('https://v1.jinrishici.com/all.json')
       }, '获取每日诗句')
 
-      if (data && data.content) {
+      if (data && data.content && data.author && data.origin) {
         return {
           content: data.content,
           author: data.author || '',
@@ -917,11 +916,11 @@ const buildWechatSafeTemplateData = (templateData) => {
   const englishLines = splitWechatField(read('english_note') || dailyFallback.quote.en, 2, 22)
     .filter(Boolean)
   const q2 = englishLines.join('\n')
-  const poetryContent = fitWechatField(read('poetry_content'), dailyFallback.poem.content)
+  const poetryContent = (read('poetry_content') || dailyFallback.poem.content)
+    .replace(/\s+/g, ' ')
+    .trim()
   const poetrySource = read('poetry_source') || dailyFallback.poem.source
-  // 英文需要两行时省略作者，优先保证每日一句完整且版面疏朗。
-  const poetrySourceLine = englishLines.length > 1 ? '' : fitWechatField(`—— ${poetrySource}`)
-  const m1 = [poetryContent, poetrySourceLine].filter(Boolean).join('\n')
+  const m1 = `${poetryContent}\n—— ${poetrySource}`
   const weekDay = '日一二三四五六'[dayjs().day()]
   const temperature = minTemperature && maxTemperature
     ? `${minTemperature}℃～${maxTemperature}℃`
@@ -939,8 +938,7 @@ const buildWechatSafeTemplateData = (templateData) => {
     a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
     b: { value: fitWechatField(compactWeather, '天气暂未获取') },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
-    n1: { value: fitWechatField(read('next_festival'), '重要纪念日待设置') },
-    n2: { value: fitWechatField(read('second_festival'), '愿每个重要日子都被记住') },
+    n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
     q1: { value: q1 },
     q2: { value: q2 },
     m1: { value: m1 }
@@ -960,7 +958,7 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 18, l: 18, n1: 18, n2: 18, q1: 18, q2: 45, m1: 37 }
+    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 18, q2: 45, m1: 90 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
@@ -969,7 +967,7 @@ const pushService = {
       .filter(([key, length]) => length > fieldLimits[key])
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
-    )).filter(item => item.length > (item.key === 'q2' ? 22 : 18))
+    )).filter(item => item.length > (item.key === 'q2' ? 22 : (item.key === 'm1' ? 40 : 18)))
     if (overflowFields.length > 0 || overflowLines.length > 0) {
       throw new PushError('微信模板字段超过安全显示长度', 'WECHAT_FIELD_TOO_LONG', {
         overflowFields,
@@ -1212,8 +1210,12 @@ const dataAggregationService = {
         }
         const nextFestival = festivalsToShow[0]
         const secondFestival = festivalsToShow[1]
+        const anniversaryFestival = festivalsToShow.find(festival => (
+          festival.type === '纪念日' || /周年|纪念/.test(festival.name)
+        ))
         data.next_festival = { value: formatFestival(nextFestival) }
         data.second_festival = { value: formatFestival(secondFestival) }
+        data.anniversary_festival = { value: formatFestival(anniversaryFestival) }
         if (nextFestival && nextFestival.diffDay <= 30) {
           birthdayMessage = `距离${nextFestival.name}${nextFestival.useLunar ? '(农历)' : ''}还有${nextFestival.diffDay}天`
         }
