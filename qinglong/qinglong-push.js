@@ -418,8 +418,8 @@ const validateTemplateConfig = () => {
     const validVariables = ['date', 'city', 'weather', 'max_temperature', 'min_temperature',
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
-      'chinese_note', 'english_note', 'a', 'b', 'x', 'l', 'n1', 'n2',
-      'q1', 'q2', 'm1', 'm2']
+      'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
+      'a', 'b', 'x', 'l', 'n1', 'n2', 'q1', 'q2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -790,6 +790,30 @@ const WECHAT_FIELD_COLORS = {
   inspiration: '#C68B2C'
 }
 
+/**
+ * 每日诗句服务（今日诗词旧版服务端接口）
+ */
+const poetryService = {
+  async getPoetry() {
+    try {
+      const data = await withRetry(async () => {
+        return httpClient.get('https://v1.jinrishici.com/all.json')
+      }, '获取每日诗句')
+
+      if (data && data.content) {
+        return {
+          content: data.content,
+          author: data.author || '',
+          title: data.origin || ''
+        }
+      }
+      return { error: '获取每日诗句失败' }
+    } catch (error) {
+      return { error: `获取每日诗句失败：${error.message}` }
+    }
+  }
+}
+
 const splitWechatField = (text, partCount = 2, limit = 18) => {
   let remaining = String(text || '').replace(/\s+/g, ' ').trim()
   const parts = []
@@ -832,21 +856,28 @@ const DAILY_FALLBACK_QUOTES = [
   { cn: '每一个清晨，都是新的温柔开始。', en: 'Every morning is a new start.' }
 ]
 
-const DAILY_FALLBACK_MOMENTS = [
-  '愿所有不期而遇，都是温柔的惊喜。',
-  '日子常新，未来不远，步履不停。',
-  '心有小暖，岁月不寒。',
-  '好好生活，慢慢相遇。',
-  '总有一束光，会照亮你前行的方向。',
-  '把今天过好，就是对明天最好的期待。',
-  '愿平凡的日子里，也有细碎的美好。'
+const DAILY_FALLBACK_POEMS = [
+  { content: '海上生明月，天涯共此时。', source: '张九龄《望月怀远》' },
+  { content: '愿我如星君如月，夜夜流光相皎洁。', source: '范成大《车遥遥篇》' },
+  { content: '行到水穷处，坐看云起时。', source: '王维《终南别业》' },
+  { content: '且将新火试新茶，诗酒趁年华。', source: '苏轼《望江南》' },
+  { content: '晴空一鹤排云上，便引诗情到碧霄。', source: '刘禹锡《秋词》' },
+  { content: '长风破浪会有时，直挂云帆济沧海。', source: '李白《行路难》' },
+  { content: '但愿人长久，千里共婵娟。', source: '苏轼《水调歌头》' },
+  { content: '人间四月芳菲尽，山寺桃花始盛开。', source: '白居易《大林寺桃花》' },
+  { content: '落霞与孤鹜齐飞，秋水共长天一色。', source: '王勃《滕王阁序》' },
+  { content: '纸上得来终觉浅，绝知此事要躬行。', source: '陆游《冬夜读书示子聿》' },
+  { content: '山有木兮木有枝，心悦君兮君不知。', source: '《越人歌》' },
+  { content: '玲珑骰子安红豆，入骨相思知不知。', source: '温庭筠《南歌子词》' },
+  { content: '两情若是久长时，又岂在朝朝暮暮。', source: '秦观《鹊桥仙》' },
+  { content: '春风得意马蹄疾，一日看尽长安花。', source: '孟郊《登科后》' }
 ]
 
 const getDailyFallback = () => {
   const seed = Number(dayjs().format('YYYYMMDD'))
   return {
     quote: DAILY_FALLBACK_QUOTES[seed % DAILY_FALLBACK_QUOTES.length],
-    moment: DAILY_FALLBACK_MOMENTS[seed % DAILY_FALLBACK_MOMENTS.length]
+    poem: DAILY_FALLBACK_POEMS[seed % DAILY_FALLBACK_POEMS.length]
   }
 }
 
@@ -876,10 +907,10 @@ const buildWechatSafeTemplateData = (templateData) => {
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
   const [q1, q2Raw] = splitWechatField(read('chinese_note') || dailyFallback.quote.cn)
-  const [m1, m2Raw] = splitWechatField(read('moment_copyrighting') || dailyFallback.moment)
   const q2 = q2Raw || '愿今天也有新的收获'
-  const momentSource = read('moment_source')
-  const m2 = m2Raw || fitWechatField(momentSource ? `—— ${momentSource}` : '—— 愿你今天开心')
+  const m1 = fitWechatField(read('poetry_content'), dailyFallback.poem.content)
+  const poetrySource = read('poetry_source') || dailyFallback.poem.source
+  const m2 = fitWechatField(`—— ${poetrySource}`)
   const weekDay = '日一二三四五六'[dayjs().day()]
   const temperature = minTemperature && maxTemperature
     ? `${minTemperature}℃～${maxTemperature}℃`
@@ -1186,13 +1217,15 @@ const dataAggregationService = {
         data.chinese_note = { value: ciba.note }
       }
 
-      // 获取每日一言
-      const hitokoto = await hitokotoService.getHitokoto()
-      if (!hitokoto.error) {
-        data.moment_copyrighting = { value: hitokoto.content }
-        const source = [hitokoto.from_who, hitokoto.from]
-          .filter(value => value && value !== '未知')
-          .join(' · ')
+      // 获取每日诗句；同时写入旧字段，兼容已有的本地模板。
+      const poetry = await poetryService.getPoetry()
+      if (!poetry.error) {
+        const source = [poetry.author, poetry.title ? `《${poetry.title}》` : '']
+          .filter(Boolean)
+          .join('')
+        data.poetry_content = { value: poetry.content }
+        data.poetry_source = { value: source }
+        data.moment_copyrighting = { value: poetry.content }
         data.moment_source = { value: source }
       }
 
