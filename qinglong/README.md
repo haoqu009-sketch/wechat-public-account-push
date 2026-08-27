@@ -144,9 +144,7 @@ schedule:
   "APP_ID": "wx...",
   "APP_SECRET": "your_secret",
   "TIAN_API_KEY": "your_tian_api_key",
-  "DAILY_QUOTE_PROVIDER": "api_ninjas",
-  "API_NINJAS_KEY": "your_api_ninjas_key",
-  "DEEPL_AUTH_KEY": "your_deepl_auth_key",
+  "DAILY_QUOTE_PROVIDER": "tianapi",
   "FESTIVALS_LIMIT": 4,
   "MAX_PUSH_ONE_MINUTE": 5,
   "SLEEP_TIME": 65000,
@@ -172,17 +170,16 @@ schedule:
   ]
 }```
 
-### 高质量每日一句（推荐）
+### 天行数据“每日英语”（推荐）
 
-默认使用 `API Ninjas` 的 Quote of the Day 获取带作者信息的英文名言，再通过 `DeepL` 翻译为中文。请在同一个 `ALL_CONFIG` JSON 中增加：
+默认使用天行数据的“每日英语”接口，直接获取英文原句、中文释义与出处。请在同一个 `ALL_CONFIG` JSON 中增加：
 
 ```json
-"DAILY_QUOTE_PROVIDER": "api_ninjas",
-"API_NINJAS_KEY": "你的 API Ninjas Key",
-"DEEPL_AUTH_KEY": "你的 DeepL Auth Key"
+"DAILY_QUOTE_PROVIDER": "tianapi",
+"TIAN_API_KEY": "你的天行数据 API Key"
 ```
 
-脚本会过滤无法在微信模板中完整展示、缺少作者或含不适宜词汇的内容；接口、翻译或长度校验任一失败时，会自动使用本地 365 组中英句库，不会导致推送失败。API Ninjas 的免费方案需要保留来源标注；当前模板字段有限时，作者会记录在运行日志中，正文和中文译文仍会完整推送。
+脚本会过滤无法在微信模板中完整展示或含不适宜词汇的内容；接口、长度校验任一失败时，会自动使用本地 365 组中英句库，不会导致推送失败。出处会记录在运行日志中，英文原句和中文释义仍会完整推送。
 
 #### `USER_INFO` 用户配置详解
 
@@ -304,8 +301,8 @@ schedule:
 | `{{tian_weather.DATA}}`  | 天行天气预报（需配置天行API）。                                         | 天行数据              |
 | `{{network_hot.DATA}}`   | 全网热搜榜（需配置天行API）。                                           | 天行数据              |
 | `{{today_courses.DATA}}` | 今日课程安排。                                                        | 用户配置              |
-| `{{chinese_note.DATA}}`  | 每日一句（中文译文）。                                                  | API Ninjas + DeepL / 本地兜底 |
-| `{{english_note.DATA}}`  | 每日一句（英文原文）。                                                  | API Ninjas + DeepL / 本地兜底 |
+| `{{chinese_note.DATA}}`  | 每日一句（中文释义）。                                                  | 天行数据 / 本地兜底 |
+| `{{english_note.DATA}}`  | 每日一句（英文原文）。                                                  | 天行数据 / 本地兜底 |
 | `{{love_day.DATA}}`      | 由 `customizedDateList` 中 `keyword` 为 `love_day` 的项计算得出的天数。 | 用户配置              |
 | `{{any_keyword.DATA}}`   | 由 `customizedDateList` 中自定义的 `keyword` 计算得出的天数。           | 用户配置              |
 
@@ -327,8 +324,8 @@ schedule:
 | `wind_scale`        | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 风力等级（需配置weatherCityCode）。                          |
 | `birthday_message`  | 内置              | `USER_INFO` -> `festivals`                           | 最近一个生日或纪念日的倒数提醒（30天内）。                  |
 | `[keyword]`         | 内置              | `USER_INFO` -> `customizedDateList`                  | 计算从指定日期到今天的天数，`[keyword]`为自定义的关键词。 |
-| `english_note`      | 高质量每日一句   | `API_NINJAS_KEY` & `DEEPL_AUTH_KEY`                 | 每日一句的英文原文；失败时使用本地句库。                     |
-| `chinese_note`      | 高质量每日一句   | `API_NINJAS_KEY` & `DEEPL_AUTH_KEY`                 | 每日一句的中文译文；失败时使用本地句库。                     |
+| `english_note`      | 天行数据每日英语 | `TIAN_API_KEY`                                      | 每日一句的英文原文；失败时使用本地句库。                     |
+| `chinese_note`      | 天行数据每日英语 | `TIAN_API_KEY`                                      | 每日一句的中文释义；失败时使用本地句库。                     |
 | `moment_copyrighting` | 一言(Hitokoto)      | 无                                                   | 随机一条“一言”文案。                                         |
 | `today_courses`     | 内置              | `USER_INFO` -> `courseSchedule`                      | 当日的课程表安排。                                           |
 | `morning_greeting`  | 天行数据API       | `TIAN_API_KEY` & `USER_INFO` -> `tianApi.morning`    | 早安心语。                                                   |
