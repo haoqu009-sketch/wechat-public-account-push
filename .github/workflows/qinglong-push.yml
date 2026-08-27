@@ -127,6 +127,7 @@ jobs:
         echo "✅ 推送任务完成"
       env:
         ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+        TIAN_API_KEY: ${{ secrets.TIAN_API_KEY }}
         USER_OPENID: ${{ secrets.USER_OPENID }}
         ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
         WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}

@@ -179,7 +179,8 @@ const initializeAndValidateConfig = (rawConfig) => {
     MAX_PUSH_ONE_MINUTE: rawConfig.MAX_PUSH_ONE_MINUTE,
     SLEEP_TIME: rawConfig.SLEEP_TIME,
     USERS: rawConfig.USER_INFO || [],
-    TIAN_API_KEY: rawConfig.TIAN_API_KEY || '',
+    // 单独的 GitHub Secret 优先，避免为新增天行功能而覆盖整份 ALL_CONFIG。
+    TIAN_API_KEY: process.env.TIAN_API_KEY || rawConfig.TIAN_API_KEY || '',
     DAILY_QUOTE_PROVIDER: String(rawConfig.DAILY_QUOTE_PROVIDER || 'tianapi').toLowerCase(),
     FESTIVALS_LIMIT: rawConfig.FESTIVALS_LIMIT,
     API_TIMEOUT: rawConfig.API_TIMEOUT,

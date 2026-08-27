@@ -73,6 +73,7 @@ GitHub Actions 提供了一种无需服务器即可自动运行青龙脚本的�
 | Secret 名称 | 是否必须 | 说明 | 示例 |
 |-------------|----------|------|------|
 | `ALL_CONFIG` | ✅ 必需 | 完整的 JSON 配置字符串 | 建议使用一键配置工具 |
+| `TIAN_API_KEY` | 天行功能必需 | 天行数据 Key；单独保存，优先于 `ALL_CONFIG` 内同名字段 | 用于每日英语和天气预报 |
 
 **步骤 3：配置 ALL_CONFIG**
 
@@ -172,7 +173,7 @@ schedule:
 
 ### 天行数据“每日英语”（推荐）
 
-默认使用天行数据的“每日英语”接口，直接获取英文原句、中文释义与出处。请在同一个 `ALL_CONFIG` JSON 中增加：
+默认使用天行数据的“每日英语”接口，直接获取英文原句、中文释义与出处。推荐新建单独的 GitHub Secret `TIAN_API_KEY`，无需编辑或覆盖现有 `ALL_CONFIG`。如确有完整配置备份，也兼容在 `ALL_CONFIG` JSON 中加入：
 
 ```json
 "DAILY_QUOTE_PROVIDER": "tianapi",
