@@ -478,6 +478,40 @@ validateTemplateConfig()
  * 天气服务
  */
 const weatherService = {
+  buildWeatherTip(weather) {
+    const weatherText = String(weather?.weather || '')
+    const high = parseFloat(String(weather?.highest || '').replace(/[^\d.-]/g, ''))
+    const low = parseFloat(String(weather?.lowest || '').replace(/[^\d.-]/g, ''))
+    const uvIndex = parseFloat(String(weather?.uv_index || '').replace(/[^\d.-]/g, ''))
+    const aqi = parseFloat(String(weather?.aqi || '').replace(/[^\d.-]/g, ''))
+    const windScale = parseFloat(String(weather?.windsc || '').replace(/[^\d.-]/g, ''))
+    const reminders = []
+
+    if (/雨/.test(weatherText)) {
+      reminders.push('今天可能有雨，出门记得带伞，注意路面湿滑。')
+    } else if (/雪/.test(weatherText)) {
+      reminders.push('今天可能有雪，注意保暖和出行防滑。')
+    } else if (Number.isFinite(high) && high >= 30) {
+      reminders.push('天气偏热，记得及时补水，注意防暑。')
+    } else if (Number.isFinite(low) && low <= 5) {
+      reminders.push('气温偏低，出门记得添衣保暖。')
+    } else if (/晴/.test(weatherText) || (Number.isFinite(uvIndex) && uvIndex >= 5)) {
+      reminders.push('阳光正好，也要记得注意防晒。')
+    } else {
+      reminders.push('天气变化，请根据体感及时调整衣物。')
+    }
+
+    if (Number.isFinite(high) && Number.isFinite(low) && high - low >= 8) {
+      reminders.push('早晚温差较大，记得适时增减衣物。')
+    } else if (Number.isFinite(windScale) && windScale >= 5) {
+      reminders.push('今天风力较大，外出请注意防风。')
+    } else if (Number.isFinite(aqi) && aqi > 100) {
+      reminders.push('空气质量一般，敏感人群减少长时间户外活动。')
+    }
+
+    return reminders.slice(0, 2).join(' ')
+  },
+
   /**
    * 获取基础天气信息。优先使用天行天气预报；未配置、无权限或异常时回退原天气源。
    *
@@ -519,6 +553,8 @@ const weatherService = {
           .replace(/[℃°\s]/g, '')
           .replace(/^(?:最高温?|最低温?)/, '')
           .trim()
+        const generatedTip = this.buildWeatherTip(weather)
+        const apiTip = String(weather.tips || '').replace(/\s+/g, ' ').trim()
         return {
           city: weather.area || city || location,
           weather: weather.weather,
@@ -526,7 +562,8 @@ const weatherService = {
           min_temperature: normalizeTemperature(weather.lowest),
           wind_direction: weather.wind || '',
           wind_scale: String(weather.windsc || '').replace(/级/g, '').trim(),
-          ganmao: weather.tips || '',
+          // 天行 tips 有时仅返回以省略号结尾的摘要，优先使用完整的结构化天气提醒。
+          ganmao: generatedTip || (!/(?:\.{3,}|…)$/.test(apiTip) ? apiTip : ''),
           source: 'tianapi'
         }
       })().catch(error => ({ error: `获取天行天气失败：${error.message}` })))
