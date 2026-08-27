@@ -602,7 +602,7 @@ const cibaService = {
 /**
  * 高质量每日一句服务。
  * 天行数据“每日英语”直接提供英文原句、中文释义和出处。
- * 最多从随机接口挑选 8 条可在当前微信模板 q1/q2 字段中完整展示的内容；全部不合适时才回退本地句库。
+ * 接受微信模板可自动换行展示的中长内容；仅在接口异常、内容为空或异常超长时回退本地句库。
  */
 const premiumDailyQuoteService = {
   requestPromise: null,
@@ -623,32 +623,21 @@ const premiumDailyQuoteService = {
     }
 
     try {
-      const maxCandidates = 8
-      let lastReason = ''
-      for (let attempt = 1; attempt <= maxCandidates; attempt++) {
-        // 天行普通套餐存在 QPS 限制；候选内容之间主动间隔，避免触发 130 限流。
-        if (attempt > 1) await sleep(650)
-        const result = await withRetry(async () => httpClient.get(
-          `https://apis.tianapi.com/everyday/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}`
-        ), `获取天行数据每日英语（候选 ${attempt}/${maxCandidates}）`)
-        const quote = result?.result
-        const english = String(quote?.content || '').replace(/\s+/g, ' ').trim()
-        const chinese = String(quote?.note || '').replace(/\s+/g, ' ').trim()
-        const source = String(quote?.source || '').replace(/\s+/g, ' ').trim()
+      const result = await withRetry(async () => httpClient.get(
+        `https://apis.tianapi.com/everyday/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}`
+      ), '获取天行数据每日英语')
+      const quote = result?.result
+      const english = String(quote?.content || '').replace(/\s+/g, ' ').trim()
+      const chinese = String(quote?.note || '').replace(/\s+/g, ' ').trim()
+      const source = String(quote?.source || '').replace(/\s+/g, ' ').trim()
 
-        if (result?.code === 130) {
-          lastReason = '天行数据请求频率受限，已等待后继续尝试'
-          continue
-        }
-        if (result?.code !== 200 || !english || !chinese) {
-          return { error: `天行数据每日英语返回异常：${result?.msg || '缺少正文或释义'}` }
-        }
-        if (this.isSafeForTemplate(english) && this.isSafeChineseForTemplate(chinese)) {
-          return { english, chinese, source, attempt }
-        }
-        lastReason = `英文 ${Array.from(english).length}/36 字符，中文 ${Array.from(chinese).length}/18 字符`
+      if (result?.code !== 200 || !english || !chinese) {
+        return { error: `天行数据每日英语返回异常：${result?.msg || '缺少正文或释义'}` }
       }
-      return { error: `连续 ${maxCandidates} 条每日英语均不适合完整展示（${lastReason}）` }
+      if (!this.isSafeForTemplate(english) || !this.isSafeChineseForTemplate(chinese)) {
+        return { error: `天行数据每日英语异常超长（英文 ${Array.from(english).length}/180，中文 ${Array.from(chinese).length}/60）` }
+      }
+      return { english, chinese, source }
     } catch (error) {
       return { error: `高质量每日一句获取失败：${error.message}` }
     }
@@ -657,11 +646,11 @@ const premiumDailyQuoteService = {
   isSafeForTemplate(text) {
     const length = Array.from(text).length
     const unsafeContent = /\b(?:fuck|shit|bitch|suicide|kill|murder)\b/i
-    return length >= 8 && length <= 36 && !unsafeContent.test(text)
+    return length >= 8 && length <= 180 && !unsafeContent.test(text)
   },
 
   isSafeChineseForTemplate(text) {
-    return Array.from(text).length > 0 && Array.from(text).length <= 18 && /[\u4e00-\u9fff]/.test(text)
+    return Array.from(text).length > 0 && Array.from(text).length <= 60 && /[\u4e00-\u9fff]/.test(text)
   }
 }
 
@@ -1070,7 +1059,9 @@ const buildWechatSafeTemplateData = (templateData) => {
   const maxTemperature = read('max_temperature')
   const windDirection = read('wind_direction')
   const windScale = read('wind_scale')
-  const q1 = fitWechatField(read('chinese_note'), dailyFallback.quote.cn)
+  const q1 = (read('chinese_note') || dailyFallback.quote.cn)
+    .replace(/\s+/g, ' ')
+    .trim()
   const q2 = (read('english_note') || dailyFallback.quote.en)
     .replace(/\s+/g, ' ')
     .trim()
@@ -1118,14 +1109,14 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 18, q2: 36, m1: 60, m2: 40 }
+    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
-    const lineLimits = { q2: 36, m1: 60, m2: 40 }
+    const lineLimits = { q1: 60, q2: 180, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
     )).filter(item => item.length > (lineLimits[item.key] || 18))
@@ -1390,7 +1381,7 @@ const dataAggregationService = {
       if (!premiumQuote.error) {
         data.english_note = { value: premiumQuote.english }
         data.chinese_note = { value: premiumQuote.chinese }
-        logInfo(`已加载天行数据每日英语（候选 ${premiumQuote.attempt}/8）：${premiumQuote.source || '未提供出处'}`)
+        logInfo(`已加载天行数据每日英语：${premiumQuote.source || '未提供出处'}`)
       } else {
         const dailyQuote = getDailyFallback().quote
         data.english_note = { value: dailyQuote.en }
