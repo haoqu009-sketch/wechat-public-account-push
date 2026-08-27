@@ -181,9 +181,6 @@ const initializeAndValidateConfig = (rawConfig) => {
     USERS: rawConfig.USER_INFO || [],
     // 单独的 GitHub Secret 优先，避免为新增天行功能而覆盖整份 ALL_CONFIG。
     TIAN_API_KEY: process.env.TIAN_API_KEY || rawConfig.TIAN_API_KEY || '',
-    // DeepSeek 仅用于将真实天气数据改写为自然提醒；未配置或调用失败时自动回退规则提醒。
-    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || rawConfig.DEEPSEEK_API_KEY || '',
-    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || rawConfig.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     DAILY_QUOTE_PROVIDER: String(rawConfig.DAILY_QUOTE_PROVIDER || 'tianapi').toLowerCase(),
     FESTIVALS_LIMIT: rawConfig.FESTIVALS_LIMIT,
     API_TIMEOUT: rawConfig.API_TIMEOUT,
@@ -207,7 +204,7 @@ const initializeAndValidateConfig = (rawConfig) => {
 
   // 输出配置摘要
   logInfo(`配置加载完成 - 用户数: ${config.USERS.length}, 微信推送: ${!!config.APP_ID}`)
-  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 高质量每日一句: ${config.DAILY_QUOTE_PROVIDER === 'tianapi' && !!config.TIAN_API_KEY}, AI天气提醒: ${!!config.DEEPSEEK_API_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
+  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 高质量每日一句: ${config.DAILY_QUOTE_PROVIDER === 'tianapi' && !!config.TIAN_API_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
 
   if (issues.length > 0) {
     logWarning('配置问题：' + issues.join('; '))
@@ -454,7 +451,7 @@ const validateTemplateConfig = () => {
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
       'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
-      'a', 'b', 'b2', 'b3', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']
+      'a', 'b', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -481,125 +478,6 @@ validateTemplateConfig()
  * 天气服务
  */
 const weatherService = {
-  buildRuleWeatherTip(weather) {
-    const weatherText = String(weather?.weather || '')
-    const high = parseFloat(String(weather?.highest || '').replace(/[^\d.-]/g, ''))
-    const low = parseFloat(String(weather?.lowest || '').replace(/[^\d.-]/g, ''))
-    const uvIndex = parseFloat(String(weather?.uv_index || '').replace(/[^\d.-]/g, ''))
-    const aqi = parseFloat(String(weather?.aqi || '').replace(/[^\d.-]/g, ''))
-    const windScale = parseFloat(String(weather?.windsc || '').replace(/[^\d.-]/g, ''))
-    if (/雨/.test(weatherText)) {
-      return ['云里藏着雨意，出门把伞带好。', '路面可能湿滑，走路慢一些。']
-    } else if (/雪/.test(weatherText)) {
-      return ['雪意渐浓，记得把自己裹暖。', '出行留意脚下，平安慢慢走。']
-    } else if (Number.isFinite(high) && high >= 30) {
-      return ['热意明显，记得常常补充水分。', '避开长时间暴晒，清凉度过今天。']
-    } else if (Number.isFinite(low) && low <= 5) {
-      return ['凉意悄悄靠近，出门多添一件。', '照顾好自己的温度，别让风钻进衣领。']
-    } else if (/晴/.test(weatherText) || (Number.isFinite(uvIndex) && uvIndex >= 5)) {
-      return ['阳光会陪你出门，也别忘记防晒。', '在明亮的天气里，舒舒服服过一天。']
-    }
-
-    if (Number.isFinite(windScale) && windScale >= 5) {
-      return ['风比平日更有存在感，出门注意防风。', '放慢脚步，留意身边容易吹落的物品。']
-    } else if (Number.isFinite(aqi) && aqi > 100) {
-      return ['今天的空气不算轻盈，少些久留。', '敏感时记得戴好口罩，照顾好呼吸。']
-    } else if (Number.isFinite(high) && Number.isFinite(low) && high - low >= 8) {
-      return ['昼夜温差有些明显，衣物灵活增减。', '别让清晨和夜晚的凉意打个措手不及。']
-    }
-
-    return ['天气有自己的节奏，穿衣跟着体感走。', '愿你从容出门，也舒适归来。']
-  },
-
-  async buildAIWeatherTip(weather) {
-    if (!CONFIG.DEEPSEEK_API_KEY) {
-      return { error: '未配置 DEEPSEEK_API_KEY' }
-    }
-
-    const weatherFacts = {
-      date: dayjs().format('YYYY-MM-DD'),
-      weekday: `星期${'日一二三四五六'[dayjs().day()]}`,
-      city: String(weather?.area || '').trim(),
-      weather: String(weather?.weather || '').trim(),
-      highest: String(weather?.highest || '').trim(),
-      lowest: String(weather?.lowest || '').trim(),
-      wind: String(weather?.wind || '').trim(),
-      windScale: String(weather?.windsc || '').trim(),
-      uvIndex: String(weather?.uv_index || '').trim(),
-      aqi: String(weather?.aqi || '').trim()
-    }
-
-    try {
-      const result = await httpClient.post(
-        'https://api.deepseek.com/chat/completions',
-        {
-          model: CONFIG.DEEPSEEK_MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: [
-                '你是每日微信天气小报的中文编辑。',
-                '只能依据用户提供的天气事实写提醒，绝不能补充或猜测数据。',
-                '写成两行连贯、自然、温暖且具体的生活提醒，避免机械口号、标题和固定套话。',
-                '不复述城市、日期、温度、风力数值，不使用“天气提醒：”等前缀。',
-                '每行必须是完整短句，各8至18个汉字，第二行自然承接第一行。',
-                '只输出JSON：{"line1":"第一行","line2":"第二行"}。'
-              ].join('')
-            },
-            {
-              role: 'user',
-              content: `请根据以下真实天气数据生成今日提醒：${JSON.stringify(weatherFacts)}`
-            }
-          ],
-          thinking: { type: 'disabled' },
-          response_format: { type: 'json_object' },
-          max_tokens: 160
-        },
-        {
-          timeout: Math.max(CONFIG.API_TIMEOUT, 15000),
-          headers: {
-            Authorization: `Bearer ${CONFIG.DEEPSEEK_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-
-      const content = String(result?.choices?.[0]?.message?.content || '')
-        .replace(/^```(?:json)?\s*|\s*```$/gi, '')
-        .trim()
-      const parsed = JSON.parse(content)
-      const normalizeLine = (value) => String(value || '')
-        .replace(/[\r\n]+/g, ' ')
-        .replace(/^\s*(?:天气)?提醒[一二12]?[：:]\s*/, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-      const lines = [normalizeLine(parsed?.line1), normalizeLine(parsed?.line2)]
-      const lengths = lines.map(line => Array.from(line).length)
-
-      if (lines.some((line, index) => (
-        lengths[index] < 6 || lengths[index] > 18 || !/[\u4e00-\u9fff]/.test(line)
-      ))) {
-        return { error: `AI天气提醒长度或内容异常（${lengths.join('/')}字）` }
-      }
-
-      return { lines }
-    } catch (error) {
-      return { error: `DeepSeek生成失败：${error.message}` }
-    }
-  },
-
-  async buildWeatherTip(weather) {
-    const ruleTip = this.buildRuleWeatherTip(weather)
-    const aiResult = await this.buildAIWeatherTip(weather)
-    if (aiResult.lines) {
-      logSuccess(`DeepSeek天气提醒生成成功（${aiResult.lines.map(line => Array.from(line).length).join('/')}字）`)
-      return aiResult.lines.join('\n')
-    }
-
-    logWarning(`AI天气提醒不可用，使用规则提醒：${aiResult.error}`)
-    return ruleTip.join('\n')
-  },
-
   /**
    * 获取基础天气信息。优先使用天行天气预报；未配置、无权限或异常时回退原天气源。
    *
@@ -641,8 +519,6 @@ const weatherService = {
           .replace(/[℃°\s]/g, '')
           .replace(/^(?:最高温?|最低温?)/, '')
           .trim()
-        const generatedTip = await this.buildWeatherTip(weather)
-        const apiTip = String(weather.tips || '').replace(/\s+/g, ' ').trim()
         return {
           city: weather.area || city || location,
           weather: weather.weather,
@@ -650,8 +526,7 @@ const weatherService = {
           min_temperature: normalizeTemperature(weather.lowest),
           wind_direction: weather.wind || '',
           wind_scale: String(weather.windsc || '').replace(/级/g, '').trim(),
-          // 天行 tips 有时仅返回以省略号结尾的摘要，优先使用完整的结构化天气提醒。
-          ganmao: generatedTip || (!/(?:\.{3,}|…)$/.test(apiTip) ? apiTip : ''),
+          ganmao: '',
           source: 'tianapi'
         }
       })().catch(error => ({ error: `获取天行天气失败：${error.message}` })))
@@ -683,14 +558,6 @@ const weatherService = {
         const normalizedHighest = forecast.high.replace(/高温/, '').replace('℃', '').trim()
         const normalizedLowest = forecast.low.replace(/低温/, '').replace('℃', '').trim()
         const normalizedWindScale = forecast.fl.replace(/级.*/, '')
-        const generatedTip = await this.buildWeatherTip({
-          area: data.cityInfo.city || city,
-          weather: forecast.type,
-          highest: normalizedHighest,
-          lowest: normalizedLowest,
-          wind: forecast.fx,
-          windsc: normalizedWindScale
-        })
         return {
           city: data.cityInfo.city,
           weather: forecast.type,
@@ -698,7 +565,7 @@ const weatherService = {
           min_temperature: normalizedLowest,
           wind_direction: forecast.fx,
           wind_scale: normalizedWindScale,
-          ganmao: generatedTip || weatherData.ganmao || '',
+          ganmao: '',
           source: 'legacy'
         }
       } else {
@@ -1072,8 +939,6 @@ const WECHAT_FIELD_COLORS = {
   inspiration: '#C68B2C',
   a: '#B65C79',
   b: '#D48232',
-  b2: '#5A8F7B',
-  b3: '#6F7F73',
   l: '#D15B83',
   n2: '#9B6BA3',
   q1: '#7251A3',
@@ -1220,25 +1085,14 @@ const buildWechatSafeTemplateData = (templateData) => {
   const compactWeather = weather && minTemperature && maxTemperature && compactWindDirection && windScale
     ? `${weather} ${minTemperature}~${maxTemperature}℃ ${compactWindDirection}${windScale}级`
     : [weather, temperature, wind].filter(Boolean).join(' ')
-  const weatherTipLines = read('weather_tip')
-    .split(/\r?\n/)
-    .map(line => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-  const [weatherTipLine1, weatherTipLine2] = weatherTipLines.length >= 2
-    ? weatherTipLines.slice(0, 2)
-    : splitWechatField(weatherTipLines[0] || '', 2, 18)
   const weatherSummary = fitWechatField(compactWeather, '天气暂未获取')
   const loveDay = read('love_day')
-  const anniversary = read('anniversary_festival')
 
   return {
-    // 将短标签放入变量值，减少微信测试模板源码长度，避免尾部变量在保存时被裁掉。
-    a: { value: fitWechatField(`今日·${dayjs().format('MM月DD日')} 周${weekDay}·${city || '哈尔滨'}`) },
-    b: { value: fitWechatField(`天气·${weatherSummary}`) },
-    b2: { value: weatherTipLine1 || '愿今天的天气，也让你感到舒适。' },
-    b3: { value: weatherTipLine2 || '从容出门，也平安归来。' },
+    a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
+    b: { value: weatherSummary },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
-    n2: { value: fitWechatField(`纪念·${anniversary || '周年纪念日待设置'}`) },
+    n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
     q1: { value: q1 },
     q2: { value: q2 },
     m1: { value: m1 },
@@ -1259,14 +1113,14 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 18, b2: 18, b3: 18, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
-    const lineLimits = { b: 18, b2: 18, b3: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const lineLimits = { b: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
     )).filter(item => item.length > (lineLimits[item.key] || 18))
