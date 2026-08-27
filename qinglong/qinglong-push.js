@@ -1082,12 +1082,16 @@ const buildWechatSafeTemplateData = (templateData) => {
   const compactWeather = weather && minTemperature && maxTemperature && compactWindDirection && windScale
     ? `${weather} ${minTemperature}~${maxTemperature}℃ ${compactWindDirection}${windScale}级`
     : [weather, temperature, wind].filter(Boolean).join(' ')
-  const weatherTipParts = splitWechatField(read('weather_tip').replace(/\s+/g, ' ').trim(), 2, 42)
-    .filter(Boolean)
-  const weatherBlock = [
-    fitWechatField(compactWeather, '天气暂未获取'),
-    ...weatherTipParts.map((part, index) => index === 0 ? `提醒 · ${part}` : part)
-  ].join('\n')
+  const weatherTip = splitWechatField(
+    read('weather_tip').replace(/\s+/g, ' ').trim(),
+    1,
+    84
+  )[0]
+  const weatherSummary = fitWechatField(compactWeather, '天气暂未获取')
+  // 微信客户端对模板变量内部的手动换行兼容不一致，使用连续文本让客户端自然换行。
+  const weatherBlock = weatherTip
+    ? `${weatherSummary} · 提醒：${weatherTip}`
+    : weatherSummary
   const loveDay = read('love_day')
 
   return {
@@ -1122,7 +1126,7 @@ const pushService = {
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
-    const lineLimits = { b: 48, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const lineLimits = { b: 112, q1: 60, q2: 180, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
     )).filter(item => item.length > (lineLimits[item.key] || 18))
