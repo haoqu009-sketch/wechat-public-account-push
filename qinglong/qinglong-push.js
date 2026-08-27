@@ -626,6 +626,8 @@ const premiumDailyQuoteService = {
       const maxCandidates = 8
       let lastReason = ''
       for (let attempt = 1; attempt <= maxCandidates; attempt++) {
+        // 天行普通套餐存在 QPS 限制；候选内容之间主动间隔，避免触发 130 限流。
+        if (attempt > 1) await sleep(650)
         const result = await withRetry(async () => httpClient.get(
           `https://apis.tianapi.com/everyday/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}`
         ), `获取天行数据每日英语（候选 ${attempt}/${maxCandidates}）`)
@@ -634,6 +636,10 @@ const premiumDailyQuoteService = {
         const chinese = String(quote?.note || '').replace(/\s+/g, ' ').trim()
         const source = String(quote?.source || '').replace(/\s+/g, ' ').trim()
 
+        if (result?.code === 130) {
+          lastReason = '天行数据请求频率受限，已等待后继续尝试'
+          continue
+        }
         if (result?.code !== 200 || !english || !chinese) {
           return { error: `天行数据每日英语返回异常：${result?.msg || '缺少正文或释义'}` }
         }
