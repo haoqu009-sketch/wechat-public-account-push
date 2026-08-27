@@ -1082,11 +1082,17 @@ const buildWechatSafeTemplateData = (templateData) => {
   const compactWeather = weather && minTemperature && maxTemperature && compactWindDirection && windScale
     ? `${weather} ${minTemperature}~${maxTemperature}℃ ${compactWindDirection}${windScale}级`
     : [weather, temperature, wind].filter(Boolean).join(' ')
+  const weatherTipParts = splitWechatField(read('weather_tip').replace(/\s+/g, ' ').trim(), 2, 42)
+    .filter(Boolean)
+  const weatherBlock = [
+    fitWechatField(compactWeather, '天气暂未获取'),
+    ...weatherTipParts.map((part, index) => index === 0 ? `提醒 · ${part}` : part)
+  ].join('\n')
   const loveDay = read('love_day')
 
   return {
     a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
-    b: { value: fitWechatField(compactWeather, '天气暂未获取') },
+    b: { value: weatherBlock },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
     n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
     q1: { value: q1 },
@@ -1109,14 +1115,14 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 18, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const fieldLimits = { a: 18, b: 112, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
-    const lineLimits = { q1: 60, q2: 180, m1: 60, m2: 40 }
+    const lineLimits = { b: 48, q1: 60, q2: 180, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
     )).filter(item => item.length > (lineLimits[item.key] || 18))
@@ -1336,6 +1342,7 @@ const dataAggregationService = {
           data.min_temperature = { value: weather.min_temperature }
           data.wind_direction = { value: weather.wind_direction }
           data.wind_scale = { value: weather.wind_scale }
+          data.weather_tip = { value: weather.ganmao || '' }
           logInfo(`已加载基础天气：${weather.source === 'tianapi' ? '天行数据' : '原天气源'}`)
         }
       } else {
