@@ -478,14 +478,62 @@ validateTemplateConfig()
  */
 const weatherService = {
   /**
-   * 获取基础天气信息（t.weather.itboy.net 接口）
-   * 注意：此接口需要城市编码，仅提供基础天气功能
-   * 如需使用天行API天气功能，请使用 tianApiService.getTianWeather()
+   * 获取基础天气信息。优先使用天行天气预报；未配置、无权限或异常时回退原天气源。
    *
    * @param {string} city      配置中的城市名，仅用于日志展示
-   * @param {string} cityCode  城市编码，如 101010100（从用户配置中读取）
+   * @param {string} cityCode  城市编码，如 101010100（天行及原天气源均支持）
    */
   async getWeather(city, cityCode) {
+    const tianWeather = await this.getTianWeather(city, cityCode)
+    if (!tianWeather.error) return tianWeather
+
+    logWarning(`天行天气不可用，尝试原天气源：${tianWeather.error}`)
+    return this.getLegacyWeather(city, cityCode)
+  },
+
+  tianCache: new Map(),
+
+  async getTianWeather(city, cityCode) {
+    if (!CONFIG.TIAN_API_KEY) {
+      return { error: '未配置 TIAN_API_KEY' }
+    }
+    const location = city || cityCode
+    if (!location) {
+      return { error: '未配置城市名或城市编码' }
+    }
+
+    const cacheKey = String(location).trim()
+    if (!this.tianCache.has(cacheKey)) {
+      this.tianCache.set(cacheKey, (async () => {
+        const data = await withRetry(async () => httpClient.get(
+          `https://apis.tianapi.com/tianqi/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}&city=${encodeURIComponent(location)}&type=1`
+        ), '获取天行基础天气')
+
+        const weather = data?.result
+        if (data?.code !== 200 || !weather?.weather) {
+          return { error: `天行天气返回异常：${data?.msg || '缺少天气数据'}` }
+        }
+
+        const normalizeTemperature = (value) => String(value || '')
+          .replace(/[℃°\s]/g, '')
+          .replace(/^(?:最高温?|最低温?)/, '')
+          .trim()
+        return {
+          city: weather.area || city || location,
+          weather: weather.weather,
+          max_temperature: normalizeTemperature(weather.highest),
+          min_temperature: normalizeTemperature(weather.lowest),
+          wind_direction: weather.wind || '',
+          wind_scale: String(weather.windsc || '').replace(/级/g, '').trim(),
+          ganmao: weather.tips || '',
+          source: 'tianapi'
+        }
+      })().catch(error => ({ error: `获取天行天气失败：${error.message}` })))
+    }
+    return this.tianCache.get(cacheKey)
+  },
+
+  async getLegacyWeather(city, cityCode) {
     try {
       const codeToUse = cityCode
 
@@ -513,7 +561,8 @@ const weatherService = {
           min_temperature: forecast.low.replace(/低温/, '').replace('℃', '').trim(),
           wind_direction: forecast.fx,
           wind_scale: forecast.fl.replace(/级.*/, ''),
-          ganmao: weatherData.ganmao || ''
+          ganmao: weatherData.ganmao || '',
+          source: 'legacy'
         }
       } else {
         return { error: '获取天气信息失败：API返回异常' }
@@ -1274,8 +1323,9 @@ const dataAggregationService = {
       // 基础信息
       data.date = { value: dayjs().format('YYYY年MM月DD日') }
 
-      // 获取基础天气信息（仅在配置了 weatherCityCode 时调用）
-      if (user.weatherCityCode) {
+      // 获取基础天气信息：优先天行天气，失败时自动回退原天气源。
+      if (user.city || user.weatherCityCode) {
+        if (user.city) data.city = { value: user.city }
         const weather = await weatherService.getWeather(user.city, user.weatherCityCode)
         if (!weather.error) {
           data.city = { value: weather.city }
@@ -1284,13 +1334,10 @@ const dataAggregationService = {
           data.min_temperature = { value: weather.min_temperature }
           data.wind_direction = { value: weather.wind_direction }
           data.wind_scale = { value: weather.wind_scale }
+          logInfo(`已加载基础天气：${weather.source === 'tianapi' ? '天行数据' : '原天气源'}`)
         }
       } else {
-        // 没有配置 weatherCityCode 时，使用 city 字段作为基础信息
-        if (user.city) {
-          data.city = { value: user.city }
-          logInfo(`用户 ${user.name} 未配置基础天气接口(weatherCityCode)，仅使用 city 字段作为基础信息`)
-        }
+        logWarning(`用户 ${user.name} 未配置城市信息，跳过天气获取`)
       }
 
   

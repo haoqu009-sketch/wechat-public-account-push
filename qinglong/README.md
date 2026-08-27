@@ -181,6 +181,10 @@ schedule:
 
 脚本会过滤无法在微信模板中完整展示或含不适宜词汇的内容；接口、长度校验任一失败时，会自动使用本地 365 组中英句库，不会导致推送失败。出处会记录在运行日志中，英文原句和中文释义仍会完整推送。
 
+### 天行数据天气预报
+
+配置了 `TIAN_API_KEY` 后，脚本会自动优先调用天行天气预报接口，使用 `USER_INFO` 中的 `city` 查询实时天气、最高/最低温、风向与风力并填入基础模板字段。`weatherCityCode` 不再是必填项，但建议保留，便于天行接口无权限或临时不可用时回退原天气源。
+
 #### `USER_INFO` 用户配置详解
 
 `USER_INFO` 是 `ALL_CONFIG` 内的一个 JSON 数组，每个对象代表一个接收消息的用户。
@@ -195,7 +199,7 @@ schedule:
 | `pushDeerKey`        | `string`              | 功能必需 | **PushDeer 的 Key**。如需使用 PushDeer 推送，此项为必需。支持多个 Key，用英文逗号 `,` 分隔。                                                        |
 | `useTemplateId`      | `string`              | 是       | **本地模板内容ID**。关联 `TEMPLATE_CONFIG` 中的模板，**PushDeer用户**必须配置此项来决定使用哪套自定义的**消息内容**。                                           |
 | `city`               | `string`              | 否       | 用户所在城市，用于天行天气预报等。默认 `北京`。                                                                                                   |
-| `weatherCityCode`    | `string`              | 条件必需 | 基础天气接口(t.weather.itboy.net)的城市编码。如仅使用天行API天气功能，则此字段为可选。                                                              |
+| `weatherCityCode`    | `string`              | 否       | 原天气源的城市编码，用作天行天气不可用时的自动兜底；配置 `city` 与 `TIAN_API_KEY` 时可不填。                                                              |
 | `horoscopeDate`      | `string`              | 否       | 星座日期，格式 `MM-DD`。用于获取星座名称 (注意：星座运势API已失效)。                                                                                 |
 | `festivals`          | `Array<object>`       | 否       | 生日/纪念日列表，用于倒计时提醒。格式：`[{"name": "生日", "date": "10-24"}]`。                                                                       |
 | `customizedDateList` | `Array<object>`       | 否       | 自定义累计日期列表。格式：`[{"keyword": "love_day", "date": "2020-01-01"}]`，模板中可用 `{{love_day.DATA}}` 显示天数。                      |
@@ -288,12 +292,12 @@ schedule:
 | 变量                     | 说明                                                                  | 数据来源              |
 | ------------------------ | --------------------------------------------------------------------- | --------------------- |
 | `{{date.DATA}}`          | 当前日期，格式：`YYYY年MM月DD日`。                                        | 系统                  |
-| `{{city.DATA}}`          | 当前城市（优先来自基础天气API，如未配置则使用用户配置的city字段）。     | 基础天气API/用户配置  |
-| `{{weather.DATA}}`       | 当前天气（需配置weatherCityCode）。                                    | `t.weather.itboy.net` |
-| `{{max_temperature.DATA}}` | 最高温度（需配置weatherCityCode）。                                    | `t.weather.itboy.net` |
-| `{{min_temperature.DATA}}` | 最低温度（需配置weatherCityCode）。                                    | `t.weather.itboy.net` |
-| `{{wind_direction.DATA}}`| 风向（需配置weatherCityCode）。                                        | `t.weather.itboy.net` |
-| `{{wind_scale.DATA}}`    | 风力等级（需配置weatherCityCode）。                                    | `t.weather.itboy.net` |
+| `{{city.DATA}}`          | 当前城市（优先来自天行天气）。                                         | 天行数据 / 用户配置  |
+| `{{weather.DATA}}`       | 当前天气（优先天行数据）。                                               | 天行数据 / 原天气源兜底 |
+| `{{max_temperature.DATA}}` | 最高温度（优先天行数据）。                                               | 天行数据 / 原天气源兜底 |
+| `{{min_temperature.DATA}}` | 最低温度（优先天行数据）。                                               | 天行数据 / 原天气源兜底 |
+| `{{wind_direction.DATA}}`| 风向（优先天行数据）。                                                   | 天行数据 / 原天气源兜底 |
+| `{{wind_scale.DATA}}`    | 风力等级（优先天行数据）。                                               | 天行数据 / 原天气源兜底 |
 | `{{birthday_message.DATA}}` | 最近的生日/纪念日倒数提醒。                                           | 用户配置              |
 | `{{moment_copyrighting.DATA}}` | 每日一言。                                                          | Hitokoto              |
 | `{{morning_greeting.DATA}}` | 早安心语（需配置天行API）。                                            | 天行数据              |
@@ -316,12 +320,12 @@ schedule:
 | 变量名              | 数据来源          | 依赖配置                                             | 说明                                                         |
 | ------------------- | ----------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
 | `date`              | 内置              | 无                                                   | 当前日期，格式如 "2023年01月01日"。                           |
-| `city`              | 基础天气API/用户配置 | `USER_INFO` -> `city`（优先），`weatherCityCode`（基础天气） | 用户所在城市（优先使用基础天气API数据，如未配置weatherCityCode则使用city字段）。 |
-| `weather`           | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 当日天气状况（需配置weatherCityCode）。                      |
-| `max_temperature`   | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 最高温度（需配置weatherCityCode）。                          |
-| `min_temperature`   | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 最低温度（需配置weatherCityCode）。                          |
-| `wind_direction`    | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 风向（需配置weatherCityCode）。                              |
-| `wind_scale`        | 基础天气API       | `USER_INFO` -> `weatherCityCode`                     | 风力等级（需配置weatherCityCode）。                          |
+| `city`              | 天行数据/用户配置 | `USER_INFO` -> `city`                                | 用户所在城市，天行天气查询使用此值。                          |
+| `weather`           | 天行天气预报      | `TIAN_API_KEY` & `USER_INFO` -> `city`               | 当日天气状况；失败时回退原天气源。                           |
+| `max_temperature`   | 天行天气预报      | `TIAN_API_KEY` & `USER_INFO` -> `city`               | 最高温度；失败时回退原天气源。                               |
+| `min_temperature`   | 天行天气预报      | `TIAN_API_KEY` & `USER_INFO` -> `city`               | 最低温度；失败时回退原天气源。                               |
+| `wind_direction`    | 天行天气预报      | `TIAN_API_KEY` & `USER_INFO` -> `city`               | 风向；失败时回退原天气源。                                   |
+| `wind_scale`        | 天行天气预报      | `TIAN_API_KEY` & `USER_INFO` -> `city`               | 风力等级；失败时回退原天气源。                               |
 | `birthday_message`  | 内置              | `USER_INFO` -> `festivals`                           | 最近一个生日或纪念日的倒数提醒（30天内）。                  |
 | `[keyword]`         | 内置              | `USER_INFO` -> `customizedDateList`                  | 计算从指定日期到今天的天数，`[keyword]`为自定义的关键词。 |
 | `english_note`      | 天行数据每日英语 | `TIAN_API_KEY`                                      | 每日一句的英文原文；失败时使用本地句库。                     |
