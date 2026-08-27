@@ -602,7 +602,7 @@ const cibaService = {
 /**
  * 高质量每日一句服务。
  * 天行数据“每日英语”直接提供英文原句、中文释义和出处。
- * 只接受可在当前微信模板 q1/q2 字段中完整展示的内容；其余情况回退到本地句库。
+ * 最多从随机接口挑选 8 条可在当前微信模板 q1/q2 字段中完整展示的内容；全部不合适时才回退本地句库。
  */
 const premiumDailyQuoteService = {
   requestPromise: null,
@@ -623,22 +623,26 @@ const premiumDailyQuoteService = {
     }
 
     try {
-      const result = await withRetry(async () => httpClient.get(
-        `https://apis.tianapi.com/everyday/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}`
-      ), '获取天行数据每日英语')
-      const quote = result?.result
-      const english = String(quote?.content || '').replace(/\s+/g, ' ').trim()
-      const chinese = String(quote?.note || '').replace(/\s+/g, ' ').trim()
-      const source = String(quote?.source || '').replace(/\s+/g, ' ').trim()
+      const maxCandidates = 8
+      let lastReason = ''
+      for (let attempt = 1; attempt <= maxCandidates; attempt++) {
+        const result = await withRetry(async () => httpClient.get(
+          `https://apis.tianapi.com/everyday/index?key=${encodeURIComponent(CONFIG.TIAN_API_KEY)}`
+        ), `获取天行数据每日英语（候选 ${attempt}/${maxCandidates}）`)
+        const quote = result?.result
+        const english = String(quote?.content || '').replace(/\s+/g, ' ').trim()
+        const chinese = String(quote?.note || '').replace(/\s+/g, ' ').trim()
+        const source = String(quote?.source || '').replace(/\s+/g, ' ').trim()
 
-      if (result?.code !== 200 || !english || !chinese) {
-        return { error: `天行数据每日英语返回异常：${result?.msg || '缺少正文或释义'}` }
+        if (result?.code !== 200 || !english || !chinese) {
+          return { error: `天行数据每日英语返回异常：${result?.msg || '缺少正文或释义'}` }
+        }
+        if (this.isSafeForTemplate(english) && this.isSafeChineseForTemplate(chinese)) {
+          return { english, chinese, source, attempt }
+        }
+        lastReason = `英文 ${Array.from(english).length}/36 字符，中文 ${Array.from(chinese).length}/18 字符`
       }
-      if (!this.isSafeForTemplate(english) || !this.isSafeChineseForTemplate(chinese)) {
-        return { error: '天行数据每日英语不适合当前模板的完整展示' }
-      }
-
-      return { english, chinese, source }
+      return { error: `连续 ${maxCandidates} 条每日英语均不适合完整展示（${lastReason}）` }
     } catch (error) {
       return { error: `高质量每日一句获取失败：${error.message}` }
     }
@@ -647,11 +651,11 @@ const premiumDailyQuoteService = {
   isSafeForTemplate(text) {
     const length = Array.from(text).length
     const unsafeContent = /\b(?:fuck|shit|bitch|suicide|kill|murder)\b/i
-    return length >= 8 && length <= 36 && !unsafeContent.test(text) && !/[.…]$/.test(text)
+    return length >= 8 && length <= 36 && !unsafeContent.test(text)
   },
 
   isSafeChineseForTemplate(text) {
-    return Array.from(text).length > 0 && Array.from(text).length <= 18 && /[\u4e00-\u9fff]/.test(text) && !/[.…]$/.test(text)
+    return Array.from(text).length > 0 && Array.from(text).length <= 18 && /[\u4e00-\u9fff]/.test(text)
   }
 }
 
@@ -1380,7 +1384,7 @@ const dataAggregationService = {
       if (!premiumQuote.error) {
         data.english_note = { value: premiumQuote.english }
         data.chinese_note = { value: premiumQuote.chinese }
-        logInfo(`已加载天行数据每日英语：${premiumQuote.source || '未提供出处'}`)
+        logInfo(`已加载天行数据每日英语（候选 ${premiumQuote.attempt}/8）：${premiumQuote.source || '未提供出处'}`)
       } else {
         const dailyQuote = getDailyFallback().quote
         data.english_note = { value: dailyQuote.en }
