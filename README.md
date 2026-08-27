@@ -32,11 +32,12 @@ wechat-public-account-push 自 2022年 建库，到2025年 完整陪伴大家 3 
 
 ### AI 天气提醒（GitHub Actions 部署）
 
-在仓库的 `Settings → Secrets and variables → Actions` 中新增名为 `DEEPSEEK_API_KEY` 的 Secret 后，脚本会把天行天气返回的真实数据交给 DeepSeek，生成简短、自然且每日变化的天气提醒。密钥不会写入日志或微信消息。
+在仓库的 `Settings → Secrets and variables → Actions` 中新增名为 `DEEPSEEK_API_KEY` 的 Secret 后，脚本会把天行天气返回的真实数据交给 DeepSeek，生成自然且每日变化的两行天气提醒。密钥不会写入日志或微信消息。
 
 - 天气事实仍来自天行数据，AI 只负责措辞，不负责预测天气。
 - 同一城市在一次任务中只生成一次，多个接收人共用结果。
-- AI 超时、密钥失效、余额不足或内容校验失败时，会自动使用本地规则提醒，不会阻断推送。
+- 天气摘要、提醒第一行和提醒第二行分别使用 `b`、`b2`、`b3`，避免微信客户端截断长变量。
+- AI 超时、密钥失效、余额不足或内容校验失败时，会自动使用两行本地规则提醒，不会阻断推送。
 - 默认模型为 `deepseek-v4-flash`；如需更换，可通过 `DEEPSEEK_MODEL` 环境变量覆盖。
 
 ## 📚 旧版功能归档

@@ -454,7 +454,7 @@ const validateTemplateConfig = () => {
       'wind_direction', 'wind_scale', 'love_day', 'birthday_message', 'moment_copyrighting',
       'morning_greeting', 'evening_greeting', 'tian_weather', 'network_hot', 'today_courses',
       'chinese_note', 'english_note', 'poetry_content', 'poetry_source',
-      'a', 'b', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']
+      'a', 'b', 'b2', 'b3', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']
 
     const templateVars = template.desc.match(/\{\{([^}]+)\.DATA\}\}/g) || []
     templateVars.forEach(varMatch => {
@@ -488,31 +488,27 @@ const weatherService = {
     const uvIndex = parseFloat(String(weather?.uv_index || '').replace(/[^\d.-]/g, ''))
     const aqi = parseFloat(String(weather?.aqi || '').replace(/[^\d.-]/g, ''))
     const windScale = parseFloat(String(weather?.windsc || '').replace(/[^\d.-]/g, ''))
-    const reminders = []
-
     if (/雨/.test(weatherText)) {
-      reminders.push('今天可能有雨，出门记得带伞，注意路面湿滑。')
+      return ['云里藏着雨意，出门把伞带好。', '路面可能湿滑，走路慢一些。']
     } else if (/雪/.test(weatherText)) {
-      reminders.push('今天可能有雪，注意保暖和出行防滑。')
+      return ['雪意渐浓，记得把自己裹暖。', '出行留意脚下，平安慢慢走。']
     } else if (Number.isFinite(high) && high >= 30) {
-      reminders.push('天气偏热，记得及时补水，注意防暑。')
+      return ['热意明显，记得常常补充水分。', '避开长时间暴晒，清凉度过今天。']
     } else if (Number.isFinite(low) && low <= 5) {
-      reminders.push('气温偏低，出门记得添衣保暖。')
+      return ['凉意悄悄靠近，出门多添一件。', '照顾好自己的温度，别让风钻进衣领。']
     } else if (/晴/.test(weatherText) || (Number.isFinite(uvIndex) && uvIndex >= 5)) {
-      reminders.push('阳光正好，也要记得注意防晒。')
-    } else {
-      reminders.push('天气变化，请根据体感及时调整衣物。')
+      return ['阳光会陪你出门，也别忘记防晒。', '在明亮的天气里，舒舒服服过一天。']
     }
 
-    if (Number.isFinite(high) && Number.isFinite(low) && high - low >= 8) {
-      reminders.push('早晚温差较大，记得适时增减衣物。')
-    } else if (Number.isFinite(windScale) && windScale >= 5) {
-      reminders.push('今天风力较大，外出请注意防风。')
+    if (Number.isFinite(windScale) && windScale >= 5) {
+      return ['风比平日更有存在感，出门注意防风。', '放慢脚步，留意身边容易吹落的物品。']
     } else if (Number.isFinite(aqi) && aqi > 100) {
-      reminders.push('空气质量一般，敏感人群减少长时间户外活动。')
+      return ['今天的空气不算轻盈，少些久留。', '敏感时记得戴好口罩，照顾好呼吸。']
+    } else if (Number.isFinite(high) && Number.isFinite(low) && high - low >= 8) {
+      return ['昼夜温差有些明显，衣物灵活增减。', '别让清晨和夜晚的凉意打个措手不及。']
     }
 
-    return reminders.slice(0, 2).join(' ')
+    return ['天气有自己的节奏，穿衣跟着体感走。', '愿你从容出门，也舒适归来。']
   },
 
   async buildAIWeatherTip(weather) {
@@ -544,9 +540,10 @@ const weatherService = {
               content: [
                 '你是每日微信天气小报的中文编辑。',
                 '只能依据用户提供的天气事实写提醒，绝不能补充或猜测数据。',
-                '写一句自然、温暖、具体的生活提醒，避免机械口号、标题和固定套话。',
+                '写成两行连贯、自然、温暖且具体的生活提醒，避免机械口号、标题和固定套话。',
                 '不复述城市、日期、温度、风力数值，不使用“天气提醒：”等前缀。',
-                '长度控制在20至52个汉字，使用中文标点，只输出JSON：{"tip":"内容"}。'
+                '每行必须是完整短句，各8至18个汉字，第二行自然承接第一行。',
+                '只输出JSON：{"line1":"第一行","line2":"第二行"}。'
               ].join('')
             },
             {
@@ -571,18 +568,21 @@ const weatherService = {
         .replace(/^```(?:json)?\s*|\s*```$/gi, '')
         .trim()
       const parsed = JSON.parse(content)
-      const tip = String(parsed?.tip || '')
+      const normalizeLine = (value) => String(value || '')
         .replace(/[\r\n]+/g, ' ')
-        .replace(/^\s*(?:天气)?提醒[：:]\s*/, '')
+        .replace(/^\s*(?:天气)?提醒[一二12]?[：:]\s*/, '')
         .replace(/\s+/g, ' ')
         .trim()
-      const length = Array.from(tip).length
+      const lines = [normalizeLine(parsed?.line1), normalizeLine(parsed?.line2)]
+      const lengths = lines.map(line => Array.from(line).length)
 
-      if (length < 12 || length > 52 || !/[\u4e00-\u9fff]/.test(tip)) {
-        return { error: `AI天气提醒长度或内容异常（${length}字）` }
+      if (lines.some((line, index) => (
+        lengths[index] < 6 || lengths[index] > 18 || !/[\u4e00-\u9fff]/.test(line)
+      ))) {
+        return { error: `AI天气提醒长度或内容异常（${lengths.join('/')}字）` }
       }
 
-      return { tip }
+      return { lines }
     } catch (error) {
       return { error: `DeepSeek生成失败：${error.message}` }
     }
@@ -591,13 +591,13 @@ const weatherService = {
   async buildWeatherTip(weather) {
     const ruleTip = this.buildRuleWeatherTip(weather)
     const aiResult = await this.buildAIWeatherTip(weather)
-    if (aiResult.tip) {
-      logSuccess(`DeepSeek天气提醒生成成功（${Array.from(aiResult.tip).length}字）`)
-      return aiResult.tip
+    if (aiResult.lines) {
+      logSuccess(`DeepSeek天气提醒生成成功（${aiResult.lines.map(line => Array.from(line).length).join('/')}字）`)
+      return aiResult.lines.join('\n')
     }
 
     logWarning(`AI天气提醒不可用，使用规则提醒：${aiResult.error}`)
-    return ruleTip
+    return ruleTip.join('\n')
   },
 
   /**
@@ -680,14 +680,25 @@ const weatherService = {
         }
 
         const forecast = weatherData.forecast[0]
+        const normalizedHighest = forecast.high.replace(/高温/, '').replace('℃', '').trim()
+        const normalizedLowest = forecast.low.replace(/低温/, '').replace('℃', '').trim()
+        const normalizedWindScale = forecast.fl.replace(/级.*/, '')
+        const generatedTip = await this.buildWeatherTip({
+          area: data.cityInfo.city || city,
+          weather: forecast.type,
+          highest: normalizedHighest,
+          lowest: normalizedLowest,
+          wind: forecast.fx,
+          windsc: normalizedWindScale
+        })
         return {
           city: data.cityInfo.city,
           weather: forecast.type,
-          max_temperature: forecast.high.replace(/高温/, '').replace('℃', '').trim(),
-          min_temperature: forecast.low.replace(/低温/, '').replace('℃', '').trim(),
+          max_temperature: normalizedHighest,
+          min_temperature: normalizedLowest,
           wind_direction: forecast.fx,
-          wind_scale: forecast.fl.replace(/级.*/, ''),
-          ganmao: weatherData.ganmao || '',
+          wind_scale: normalizedWindScale,
+          ganmao: generatedTip || weatherData.ganmao || '',
           source: 'legacy'
         }
       } else {
@@ -1061,6 +1072,8 @@ const WECHAT_FIELD_COLORS = {
   inspiration: '#C68B2C',
   a: '#B65C79',
   b: '#D48232',
+  b2: '#5A8F7B',
+  b3: '#6F7F73',
   l: '#D15B83',
   n2: '#9B6BA3',
   q1: '#7251A3',
@@ -1207,21 +1220,21 @@ const buildWechatSafeTemplateData = (templateData) => {
   const compactWeather = weather && minTemperature && maxTemperature && compactWindDirection && windScale
     ? `${weather} ${minTemperature}~${maxTemperature}℃ ${compactWindDirection}${windScale}级`
     : [weather, temperature, wind].filter(Boolean).join(' ')
-  const weatherTip = splitWechatField(
-    read('weather_tip').replace(/\s+/g, ' ').trim(),
-    1,
-    84
-  )[0]
+  const weatherTipLines = read('weather_tip')
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  const [weatherTipLine1, weatherTipLine2] = weatherTipLines.length >= 2
+    ? weatherTipLines.slice(0, 2)
+    : splitWechatField(weatherTipLines[0] || '', 2, 18)
   const weatherSummary = fitWechatField(compactWeather, '天气暂未获取')
-  // 微信客户端对模板变量内部的手动换行兼容不一致，使用连续文本让客户端自然换行。
-  const weatherBlock = weatherTip
-    ? `${weatherSummary} · 提醒：${weatherTip}`
-    : weatherSummary
   const loveDay = read('love_day')
 
   return {
     a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
-    b: { value: weatherBlock },
+    b: { value: weatherSummary },
+    b2: { value: weatherTipLine1 || '愿今天的天气，也让你感到舒适。' },
+    b3: { value: weatherTipLine2 || '从容出门，也平安归来。' },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
     n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
     q1: { value: q1 },
@@ -1244,14 +1257,14 @@ const pushService = {
     }
 
     const polishedTemplateData = buildWechatSafeTemplateData(templateData)
-    const fieldLimits = { a: 18, b: 112, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const fieldLimits = { a: 18, b: 18, b2: 18, b3: 18, l: 18, n2: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const fieldLengths = Object.fromEntries(Object.keys(fieldLimits).map(key => [
       key,
       Array.from(String(polishedTemplateData[key]?.value || '')).length
     ]))
     const overflowFields = Object.entries(fieldLengths)
       .filter(([key, length]) => length > fieldLimits[key])
-    const lineLimits = { b: 112, q1: 60, q2: 180, m1: 60, m2: 40 }
+    const lineLimits = { b: 18, b2: 18, b3: 18, q1: 60, q2: 180, m1: 60, m2: 40 }
     const overflowLines = Object.entries(polishedTemplateData).flatMap(([key, item]) => (
       String(item?.value || '').split('\n').map((line, index) => ({ key, line: index + 1, length: Array.from(line).length }))
     )).filter(item => item.length > (lineLimits[item.key] || 18))
