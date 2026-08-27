@@ -180,6 +180,9 @@ const initializeAndValidateConfig = (rawConfig) => {
     SLEEP_TIME: rawConfig.SLEEP_TIME,
     USERS: rawConfig.USER_INFO || [],
     TIAN_API_KEY: rawConfig.TIAN_API_KEY || '',
+    DAILY_QUOTE_PROVIDER: String(rawConfig.DAILY_QUOTE_PROVIDER || 'api_ninjas').toLowerCase(),
+    API_NINJAS_KEY: rawConfig.API_NINJAS_KEY || '',
+    DEEPL_AUTH_KEY: rawConfig.DEEPL_AUTH_KEY || '',
     FESTIVALS_LIMIT: rawConfig.FESTIVALS_LIMIT,
     API_TIMEOUT: rawConfig.API_TIMEOUT,
     MAX_RETRIES: rawConfig.MAX_RETRIES,
@@ -202,7 +205,7 @@ const initializeAndValidateConfig = (rawConfig) => {
 
   // 输出配置摘要
   logInfo(`配置加载完成 - 用户数: ${config.USERS.length}, 微信推送: ${!!config.APP_ID}`)
-  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
+  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 高质量每日一句: ${config.DAILY_QUOTE_PROVIDER === 'api_ninjas' && !!config.API_NINJAS_KEY && !!config.DEEPL_AUTH_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
 
   if (issues.length > 0) {
     logWarning('配置问题：' + issues.join('; '))
@@ -545,6 +548,80 @@ const cibaService = {
     } catch (error) {
       return { error: `获取每日一句失败：${error.message}` }
     }
+  }
+}
+
+/**
+ * 高质量每日一句服务。
+ * API Ninjas 负责每日经过筛选的英文名言，DeepL 负责中文翻译。
+ * 只接受可在当前微信模板 q1/q2 字段中完整展示的内容；其余情况回退到本地句库。
+ */
+const premiumDailyQuoteService = {
+  requestPromise: null,
+
+  async getDailyQuote() {
+    if (!this.requestPromise) {
+      this.requestPromise = this.fetchDailyQuote()
+    }
+    return this.requestPromise
+  },
+
+  async fetchDailyQuote() {
+    if (CONFIG.DAILY_QUOTE_PROVIDER !== 'api_ninjas') {
+      return { error: '每日一句服务未启用 API Ninjas' }
+    }
+    if (!CONFIG.API_NINJAS_KEY || !CONFIG.DEEPL_AUTH_KEY) {
+      return { error: '缺少 API_NINJAS_KEY 或 DEEPL_AUTH_KEY' }
+    }
+
+    try {
+      const result = await withRetry(async () => httpClient.get(
+        'https://api.api-ninjas.com/v2/quoteoftheday',
+        { headers: { 'X-Api-Key': CONFIG.API_NINJAS_KEY } }
+      ), '获取 API Ninjas 每日名言')
+      const quote = Array.isArray(result) ? result[0] : result
+      const english = String(quote?.quote || '').replace(/\s+/g, ' ').trim()
+      const author = String(quote?.author || '').replace(/\s+/g, ' ').trim()
+      const work = String(quote?.work || '').replace(/\s+/g, ' ').trim()
+
+      if (!english || !author) {
+        return { error: 'API Ninjas 返回的每日名言缺少正文或作者' }
+      }
+      if (!this.isSafeForTemplate(english)) {
+        return { error: 'API Ninjas 每日名言不适合当前模板的完整展示' }
+      }
+
+      const chinese = await this.translateToChinese(english)
+      if (!chinese || Array.from(chinese).length > 18 || !/[\u4e00-\u9fff]/.test(chinese)) {
+        return { error: '每日名言中文译文不适合当前模板的完整展示' }
+      }
+
+      return { english, chinese, author, work }
+    } catch (error) {
+      return { error: `高质量每日一句获取失败：${error.message}` }
+    }
+  },
+
+  isSafeForTemplate(text) {
+    const length = Array.from(text).length
+    const unsafeContent = /\b(?:fuck|shit|bitch|suicide|kill|murder)\b/i
+    return length >= 8 && length <= 36 && !unsafeContent.test(text)
+  },
+
+  async translateToChinese(text) {
+    const endpoint = /:fx$/i.test(CONFIG.DEEPL_AUTH_KEY)
+      ? 'https://api-free.deepl.com/v2/translate'
+      : 'https://api.deepl.com/v2/translate'
+    const data = await withRetry(async () => httpClient.post(endpoint, {
+      text: [text],
+      target_lang: 'ZH'
+    }, {
+      headers: {
+        Authorization: `DeepL-Auth-Key ${CONFIG.DEEPL_AUTH_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    }), '翻译每日名言')
+    return String(data?.translations?.[0]?.text || '').replace(/\s+/g, ' ').trim()
   }
 }
 
@@ -1270,11 +1347,18 @@ const dataAggregationService = {
         data[key] = { value: days.toString() }
       }
 
-      // 精选短中英句按日期轮换，保证两种语言都能在微信字段限制内完整显示。
-      const dailyQuote = getDailyFallback().quote
-      data.english_note = { value: dailyQuote.en }
-      data.chinese_note = { value: dailyQuote.cn }
-      logInfo('已加载本地精选短中英句')
+      // 优先使用经筛选的 API Ninjas 每日名言和 DeepL 中文译文；任何异常均回退本地句库。
+      const premiumQuote = await premiumDailyQuoteService.getDailyQuote()
+      if (!premiumQuote.error) {
+        data.english_note = { value: premiumQuote.english }
+        data.chinese_note = { value: premiumQuote.chinese }
+        logInfo(`已加载高质量每日一句：${premiumQuote.author}${premiumQuote.work ? `《${premiumQuote.work}》` : ''}`)
+      } else {
+        const dailyQuote = getDailyFallback().quote
+        data.english_note = { value: dailyQuote.en }
+        data.chinese_note = { value: dailyQuote.cn }
+        logWarning(`高质量每日一句不可用，已回退本地句库：${premiumQuote.error}`)
+      }
 
       // 获取每日诗句；同时写入旧字段，兼容已有的本地模板。
       const poetry = await poetryService.getPoetry()
