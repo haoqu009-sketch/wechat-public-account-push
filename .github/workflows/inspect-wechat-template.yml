@@ -1,0 +1,58 @@
+name: inspect-wechat-template
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 读取微信服务器保存的当前模板
+        env:
+          ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+          WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          config = json.loads(os.environ['ALL_CONFIG'])
+          app_id = config['APP_ID']
+          app_secret = config['APP_SECRET']
+          template_id = os.environ.get('WECHAT_TEMPLATE_ID', '').strip()
+
+          token_url = 'https://api.weixin.qq.com/cgi-bin/token?' + urllib.parse.urlencode({
+              'grant_type': 'client_credential',
+              'appid': app_id,
+              'secret': app_secret,
+          })
+          with urllib.request.urlopen(token_url, timeout=15) as response:
+              token_result = json.load(response)
+          access_token = token_result.get('access_token')
+          if not access_token:
+              raise RuntimeError('获取微信 access_token 失败：' + token_result.get('errmsg', '未知错误'))
+
+          list_url = 'https://api.weixin.qq.com/cgi-bin/template/get_all_private_template?' + urllib.parse.urlencode({
+              'access_token': access_token,
+          })
+          with urllib.request.urlopen(list_url, timeout=15) as response:
+              template_result = json.load(response)
+
+          templates = template_result.get('template_list', [])
+          current = next((item for item in templates if item.get('template_id') == template_id), None)
+          if not current:
+              print('CURRENT_TEMPLATE_NOT_FOUND')
+              print('AVAILABLE_TEMPLATE_COUNT=' + str(len(templates)))
+              raise SystemExit(1)
+
+          print('CURRENT_TEMPLATE_TITLE=' + str(current.get('title', '')))
+          print('CURRENT_TEMPLATE_CONTENT_BEGIN')
+          print(current.get('content', ''))
+          print('CURRENT_TEMPLATE_CONTENT_END')
+          PY
