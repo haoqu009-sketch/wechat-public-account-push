@@ -1229,14 +1229,16 @@ const buildWechatSafeTemplateData = (templateData) => {
     : splitWechatField(weatherTipLines[0] || '', 2, 18)
   const weatherSummary = fitWechatField(compactWeather, '天气暂未获取')
   const loveDay = read('love_day')
+  const anniversary = read('anniversary_festival')
 
   return {
-    a: { value: fitWechatField(`${dayjs().format('MM月DD日')} 周${weekDay} · ${city || '哈尔滨'}`) },
-    b: { value: weatherSummary },
+    // 将短标签放入变量值，减少微信测试模板源码长度，避免尾部变量在保存时被裁掉。
+    a: { value: fitWechatField(`今日·${dayjs().format('MM月DD日')} 周${weekDay}·${city || '哈尔滨'}`) },
+    b: { value: fitWechatField(`天气·${weatherSummary}`) },
     b2: { value: weatherTipLine1 || '愿今天的天气，也让你感到舒适。' },
     b3: { value: weatherTipLine2 || '从容出门，也平安归来。' },
     l: { value: fitWechatField(loveDay ? `相伴第${loveDay}天` : '相伴纪念日待设置') },
-    n2: { value: fitWechatField(read('anniversary_festival'), '周年纪念日待设置') },
+    n2: { value: fitWechatField(`纪念·${anniversary || '周年纪念日待设置'}`) },
     q1: { value: q1 },
     q2: { value: q2 },
     m1: { value: m1 },
