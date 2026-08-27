@@ -181,6 +181,9 @@ const initializeAndValidateConfig = (rawConfig) => {
     USERS: rawConfig.USER_INFO || [],
     // 单独的 GitHub Secret 优先，避免为新增天行功能而覆盖整份 ALL_CONFIG。
     TIAN_API_KEY: process.env.TIAN_API_KEY || rawConfig.TIAN_API_KEY || '',
+    // DeepSeek 仅用于将真实天气数据改写为自然提醒；未配置或调用失败时自动回退规则提醒。
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || rawConfig.DEEPSEEK_API_KEY || '',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || rawConfig.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     DAILY_QUOTE_PROVIDER: String(rawConfig.DAILY_QUOTE_PROVIDER || 'tianapi').toLowerCase(),
     FESTIVALS_LIMIT: rawConfig.FESTIVALS_LIMIT,
     API_TIMEOUT: rawConfig.API_TIMEOUT,
@@ -204,7 +207,7 @@ const initializeAndValidateConfig = (rawConfig) => {
 
   // 输出配置摘要
   logInfo(`配置加载完成 - 用户数: ${config.USERS.length}, 微信推送: ${!!config.APP_ID}`)
-  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 高质量每日一句: ${config.DAILY_QUOTE_PROVIDER === 'tianapi' && !!config.TIAN_API_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
+  logInfo(`天行API: ${!!config.TIAN_API_KEY}, 高质量每日一句: ${config.DAILY_QUOTE_PROVIDER === 'tianapi' && !!config.TIAN_API_KEY}, AI天气提醒: ${!!config.DEEPSEEK_API_KEY}, 节日限制: ${config.FESTIVALS_LIMIT}`)
 
   if (issues.length > 0) {
     logWarning('配置问题：' + issues.join('; '))
@@ -478,7 +481,7 @@ validateTemplateConfig()
  * 天气服务
  */
 const weatherService = {
-  buildWeatherTip(weather) {
+  buildRuleWeatherTip(weather) {
     const weatherText = String(weather?.weather || '')
     const high = parseFloat(String(weather?.highest || '').replace(/[^\d.-]/g, ''))
     const low = parseFloat(String(weather?.lowest || '').replace(/[^\d.-]/g, ''))
@@ -510,6 +513,91 @@ const weatherService = {
     }
 
     return reminders.slice(0, 2).join(' ')
+  },
+
+  async buildAIWeatherTip(weather) {
+    if (!CONFIG.DEEPSEEK_API_KEY) {
+      return { error: '未配置 DEEPSEEK_API_KEY' }
+    }
+
+    const weatherFacts = {
+      date: dayjs().format('YYYY-MM-DD'),
+      weekday: `星期${'日一二三四五六'[dayjs().day()]}`,
+      city: String(weather?.area || '').trim(),
+      weather: String(weather?.weather || '').trim(),
+      highest: String(weather?.highest || '').trim(),
+      lowest: String(weather?.lowest || '').trim(),
+      wind: String(weather?.wind || '').trim(),
+      windScale: String(weather?.windsc || '').trim(),
+      uvIndex: String(weather?.uv_index || '').trim(),
+      aqi: String(weather?.aqi || '').trim()
+    }
+
+    try {
+      const result = await httpClient.post(
+        'https://api.deepseek.com/chat/completions',
+        {
+          model: CONFIG.DEEPSEEK_MODEL,
+          messages: [
+            {
+              role: 'system',
+              content: [
+                '你是每日微信天气小报的中文编辑。',
+                '只能依据用户提供的天气事实写提醒，绝不能补充或猜测数据。',
+                '写一句自然、温暖、具体的生活提醒，避免机械口号、标题和固定套话。',
+                '不复述城市、日期、温度、风力数值，不使用“天气提醒：”等前缀。',
+                '长度控制在20至52个汉字，使用中文标点，只输出JSON：{"tip":"内容"}。'
+              ].join('')
+            },
+            {
+              role: 'user',
+              content: `请根据以下真实天气数据生成今日提醒：${JSON.stringify(weatherFacts)}`
+            }
+          ],
+          thinking: { type: 'disabled' },
+          response_format: { type: 'json_object' },
+          max_tokens: 160
+        },
+        {
+          timeout: Math.max(CONFIG.API_TIMEOUT, 15000),
+          headers: {
+            Authorization: `Bearer ${CONFIG.DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+
+      const content = String(result?.choices?.[0]?.message?.content || '')
+        .replace(/^```(?:json)?\s*|\s*```$/gi, '')
+        .trim()
+      const parsed = JSON.parse(content)
+      const tip = String(parsed?.tip || '')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/^\s*(?:天气)?提醒[：:]\s*/, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      const length = Array.from(tip).length
+
+      if (length < 12 || length > 52 || !/[\u4e00-\u9fff]/.test(tip)) {
+        return { error: `AI天气提醒长度或内容异常（${length}字）` }
+      }
+
+      return { tip }
+    } catch (error) {
+      return { error: `DeepSeek生成失败：${error.message}` }
+    }
+  },
+
+  async buildWeatherTip(weather) {
+    const ruleTip = this.buildRuleWeatherTip(weather)
+    const aiResult = await this.buildAIWeatherTip(weather)
+    if (aiResult.tip) {
+      logSuccess(`DeepSeek天气提醒生成成功（${Array.from(aiResult.tip).length}字）`)
+      return aiResult.tip
+    }
+
+    logWarning(`AI天气提醒不可用，使用规则提醒：${aiResult.error}`)
+    return ruleTip
   },
 
   /**
@@ -553,7 +641,7 @@ const weatherService = {
           .replace(/[℃°\s]/g, '')
           .replace(/^(?:最高温?|最低温?)/, '')
           .trim()
-        const generatedTip = this.buildWeatherTip(weather)
+        const generatedTip = await this.buildWeatherTip(weather)
         const apiTip = String(weather.tips || '').replace(/\s+/g, ' ').trim()
         return {
           city: weather.area || city || location,
