@@ -1,31 +1,26 @@
 [
   {
     "name": "哈尔滨医科大学",
-    "ok": true,
-    "articles": 7,
-    "warnings": [
-      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
-      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
-    ]
+    "ok": false,
+    "articles": 0,
+    "warnings": [],
+    "error": "来源连接失败（ETIMEDOUT）"
   },
   {
     "name": "哈尔滨医科大学附属第一医院",
-    "ok": true,
-    "articles": 7,
-    "warnings": [
-      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
-      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
-    ]
+    "ok": false,
+    "articles": 0,
+    "warnings": [],
+    "error": "来源连接失败（ETIMEDOUT）"
   },
   {
     "name": "哈尔滨医科大学附属第二医院",
-    "ok": true,
-    "articles": 2,
+    "ok": false,
+    "articles": 0,
     "warnings": [
-      "有公告读取失败：来源连接失败（ETIMEDOUT）",
-      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
-      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
-    ]
+      "有公告读取失败：来源连接失败（ETIMEDOUT）"
+    ],
+    "error": "招聘公告均读取失败"
   },
   {
     "name": "黑龙江省卫生健康委员会",
@@ -43,9 +38,14 @@
   },
   {
     "name": "北京协和医院",
-    "ok": false,
-    "articles": 0,
-    "warnings": [],
-    "error": "未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染"
+    "ok": true,
+    "articles": 12,
+    "warnings": [
+      "公开接口共有717篇公告，本次有界检查前30篇，未覆盖全部历史公告",
+      "近期公告30篇，本次最多读取12篇详情，其余尚未检查",
+      "公告含附件需人工核对：2027年度临床医学博士后招收遴选——个人科研成果填报说明.docx https://jobs.pumch.cn/page/search-detail?jobId=41a00218d46c47a2b96439e485619e0b",
+      "公告含附件需人工核对：岗位职责.docx https://jobs.pumch.cn/page/search-detail?jobId=4ac5b236ed8a464d94319771c281d677",
+      "公告含附件需人工核对：技术人员岗位职责.docx https://jobs.pumch.cn/page/search-detail?jobId=3f7fd4f3c45e4137bfedbd0891e66c39"
+    ]
   }
 ]
