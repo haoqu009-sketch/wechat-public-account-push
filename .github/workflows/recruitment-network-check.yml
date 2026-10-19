@@ -1,0 +1,49 @@
+name: recruitment-hosted-network-check
+
+# Manual, read-only comparison. Never sends WeChat or changes the report/state branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recruitment-hosted-network-check
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: preview-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      TZ: Asia/Shanghai
+      NODE_USE_ENV_PROXY: '1'
+      RECRUITMENT_STATE_DIR: ${{ github.workspace }}/.recruitment-state
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: recruitment/package-lock.json
+      - name: Install recruitment dependencies
+        run: npm ci --prefix recruitment --no-audit --no-fund
+      - name: Verify recruitment logic on this runtime
+        run: npm test --prefix recruitment
+      - name: Read-only collection preview without credentials
+        run: node recruitment/run.mjs --dry-run
+      - name: Retain per-runtime source diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recruitment-network-${{ matrix.os }}-${{ github.run_id }}
+          path: .recruitment-state/reports/
+          if-no-files-found: ignore
+          retention-days: 7
