@@ -51,12 +51,45 @@ export async function getAccessToken(config, fetcher = fetch) {
   return result.access_token;
 }
 
-export async function sendDigest(user, digest, coverage, token, reportUrl, fetcher = fetch) {
+const recruitmentFields = Object.freeze(['a', 'b', 'l', 'n2', 'q1', 'q2', 'm1', 'm2']);
+
+export async function validateRecruitmentTemplates(config, token, fetcher = fetch) {
+  if (!config?.users?.length || config.users.some(user => !user.templateId)) {
+    throw new Error('招聘模板校验需要完整的接收人和模板配置');
+  }
+  const result = await api(`https://api.weixin.qq.com/cgi-bin/template/get_all_private_template?access_token=${encodeURIComponent(token)}`, {}, fetcher);
+  if (!Array.isArray(result.template_list)) throw new Error('微信接口未返回模板列表');
+  const templateIds = new Set(config.users.map(user => user.templateId));
+  for (const templateId of templateIds) {
+    const template = result.template_list.find(item => item.template_id === templateId);
+    if (!template) throw new Error('微信账号中找不到已配置的招聘模板，请检查模板所属测试号和Secret');
+    if (typeof template.content !== 'string') throw new Error('微信招聘模板内容格式异常');
+    const found = new Set();
+    const remainder = template.content.replace(/\{\{([\s\S]*?)\}\}/g, (_, placeholder) => {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\.DATA$/.exec(placeholder.trim());
+      if (!match || !recruitmentFields.includes(match[1])) {
+        throw new Error('微信招聘模板包含不支持的变量，请使用部署说明中的8个字段');
+      }
+      found.add(match[1]);
+      return '';
+    });
+    if (remainder.includes('{{') || remainder.includes('}}')) throw new Error('微信招聘模板的变量括号格式异常');
+    const missing = recruitmentFields.filter(field => !found.has(field));
+    if (missing.length) throw new Error(`微信招聘模板缺少字段：${missing.join('、')}`);
+  }
+  return { templateCount: templateIds.size, recipientCount: config.users.length, fields: [...recruitmentFields] };
+}
+
+export async function sendTemplateMessage(user, data, token, reportUrl, fetcher = fetch) {
   if (!reportUrl || !/^https:\/\//.test(reportUrl)) throw new Error('微信日报需要可访问的HTTPS详情地址');
-  const data = await api(`https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${encodeURIComponent(token)}`, {
+  const result = await api(`https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${encodeURIComponent(token)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ touser: user.openId, template_id: user.templateId, url: reportUrl, data: wechatData(digest, coverage) }),
+    body: JSON.stringify({ touser: user.openId, template_id: user.templateId, url: reportUrl, data }),
   }, fetcher);
-  if (data.errcode !== 0 || !data.msgid) throw new Error('微信接口未确认消息已接受');
+  if (result.errcode !== 0 || !result.msgid) throw new Error('微信接口未确认消息已接受');
   return { accepted: true };
+}
+
+export async function sendDigest(user, digest, coverage, token, reportUrl, fetcher = fetch) {
+  return sendTemplateMessage(user, wechatData(digest, coverage), token, reportUrl, fetcher);
 }
