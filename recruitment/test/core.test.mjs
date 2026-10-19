@@ -201,6 +201,14 @@ test('下载验证页会明确报告而不覆盖旧岗位', async () => {
   assert.ok(active.coverage.warnings.some(warning => /下载验证页/.test(warning)));
 });
 
+test('受限下载明确接收JSON，兼容官网公开接口的内容协商', async () => {
+  const result = await download(source.url, ['hospital.example'], async (url, options) => {
+    assert.match(options.headers.Accept, /application\/json/);
+    return Response.json({ code: 200 });
+  });
+  assert.deepEqual(JSON.parse(result.bytes.toString('utf8')), { code: 200 });
+});
+
 test('重定向不能跳出来源白名单，限制响应大小', async () => {
   await assert.rejects(download(source.url, ['hospital.example'], async () => new Response(null, { status: 302, headers: { location: 'https://evil.example/' } })), /未配置/);
   await assert.rejects(download(source.url, ['hospital.example'], async () => new Response('12345'), 3), /大小/);

@@ -214,7 +214,8 @@ export function markDelivered(state, digest, recipient, deliveredAt) {
 export function renderMarkdown(digest, coverage) {
   const escape = value => clean(value).replace(/[\[\]<>*`|]/g, '');
   const lines = [`# 医学影像招聘日报 · ${digest.today}`, '', `来源检查：${coverage.filter(s => s.ok).length}/${coverage.length} 个来源成功。`,
-    '适用方向：2027届硕士、CT方向，规培完成、已取得医师资格；所有资格以官方公告为准。', ''];
+    '适用方向：2027届硕士、CT方向，规培完成、已取得医师资格；所有资格以官方公告为准。',
+    '仅统计本次可读取并可解析的内容；存在失败来源或未核验附件时，不能将无新增理解为没有招聘。', ''];
   for (const [label, jobs] of [['影像医师', digest.physicians], ['技师候补', digest.technicians], ['截止提醒', digest.reminders]]) {
     lines.push(`## ${label}`, '');
     if (!jobs.length) lines.push('本次无新增或提醒。', '');
@@ -225,6 +226,8 @@ export function renderMarkdown(digest, coverage) {
         `依据：${job.matches.map(escape).join('；') || '涉及影像相关岗位，具体资格待核实'}。`,
         `待核对：${job.requirements.map(escape).join('；')}。`,
         ...(job.conditionExcerpt ? [`岗位原文摘录：${escape(job.conditionExcerpt)}`] : []),
+        ...(job.announcementTitle ? [`所属公告：${escape(job.announcementTitle)}`] : []),
+        ...(job.announcementText ? [`公告正文摘录（非完整原文）：${escape(job.announcementText.slice(0, 1200))}`] : []),
         `发布日期：${job.published || '未识别'}；采集日期：${job.collectedAt || digest.today}。`,
         `[官方公告](${job.url})`, '');
     }

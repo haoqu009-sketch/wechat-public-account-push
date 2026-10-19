@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { clean, imaging, linksFrom, classifyLink, pageData, jobFrom, safeUrl, daysBetween } from './core.mjs';
+import { collectPumchSource } from './pumch.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -11,7 +12,7 @@ export async function download(url, hosts, fetcher = fetch, limit = 5_000_000) {
     try {
       response = await fetcher(current, {
         redirect: 'manual', signal: AbortSignal.timeout(20_000),
-        headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/octet-stream;q=0.8' },
+        headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/json,application/octet-stream;q=0.8,*/*;q=0.5' },
       });
     } catch (error) {
       const code = error.cause?.code || error.code || error.name;
@@ -67,6 +68,7 @@ export async function spreadsheetRows(bytes) {
 
 export async function collectSource(source, config, today, options = {}) {
   const request = options.request || download;
+  if (source.type === 'pumch-api') return collectPumchSource(source, config, today, { ...options, request });
   const pause = options.pause || wait;
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
   const coverage = { name: source.name, ok: false, articles: 0, warnings: [] };

@@ -19,6 +19,6 @@
     { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "verifyName": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmush.edu.cn/xxgk/rczp.htm", "isListing": true, "allowedHosts": ["www.hrbmush.edu.cn", "hr.hrbmu.edu.cn", "www.hrbmu.edu.cn"] },
     { "id": "hlj-health", "name": "黑龙江省卫生健康委员会", "verifyName": "黑龙江省卫生健康委员会", "province": "黑龙江", "url": "https://wsjkw.hlj.gov.cn/" },
     { "id": "cmu1", "name": "中国医科大学附属第一医院", "verifyName": "中国医科大学附属第一医院", "province": "辽宁", "url": "https://www.cmu1h.com/", "allowedHosts": ["www.cmu1h.com", "cmu1h.com"] },
-    { "id": "pumch", "name": "北京协和医院", "verifyName": "北京协和医院", "province": "北京", "url": "https://jobs.pumch.cn/", "allowedHosts": ["jobs.pumch.cn"] }
+    { "id": "pumch", "name": "北京协和医院", "type": "pumch-api", "verifyName": "北京协和医院", "province": "北京", "url": "https://jobs.pumch.cn/", "allowedHosts": ["jobs.pumch.cn"] }
   ]
 }
