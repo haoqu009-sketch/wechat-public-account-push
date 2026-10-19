@@ -46,6 +46,8 @@ api.weixin.qq.com
 
 已有 `.github/workflows/qinglong-push.yml` 已改为招聘工作流，每天北京时间07:30运行；旧版 `weixin-push-on-time.yml` 只保留手动触发，避免继续定时发送生活内容。GitHub的定时任务可能延迟，并且工作流需要位于默认分支且Actions已启用。
 
+正式任务使用标准 `macos-latest` GitHub托管环境，不需要个人电脑保持开机。2026-10-19的无密钥只读对比中，Ubuntu可采集2/6来源，Windows和macOS均为4/6；这不是持续可达性保证，仍需查看每次来源报告。可手动运行 `recruitment-hosted-network-check` 复查三个环境；该诊断不发送微信、不修改远程去重记录。
+
 1. 将代码部署到默认分支后，在Actions运行 `medical-imaging-recruitment`，先保持 `dry_run=true`，查看下载的日报及来源状态。需要逐项核实来源能访问、招聘入口正确、公告内容可以解析。这个预览不要求微信Secrets。
 2. 沿用原有 `ALL_CONFIG`：读取 `APP_ID`、`APP_SECRET` 和 `USER_INFO` 中的微信接收人、模板ID。也兼容已有 `USER_OPENID`、`ADDITIONAL_USER_OPENIDS`、`WECHAT_TEMPLATE_ID` 覆盖项。若不用ALL_CONFIG，则分别设置 `APP_ID`、`APP_SECRET`、`USER_OPENID`、`WECHAT_TEMPLATE_ID`。只在GitHub仓库Settings → Secrets and variables → Actions安全输入；不要把凭据放进代码、聊天或日志。无需天行API Key。
 3. 在微信测试号平台，将模板文字改为下面的招聘模板，字段名保持一致；如果创建了新模板，将新ID存到 `RECRUITMENT_TEMPLATE_ID`。脚本支持已有字段，但无法通过本地代码更改微信平台保存的文字标签。

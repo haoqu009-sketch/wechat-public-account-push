@@ -29,7 +29,9 @@ concurrency:
 jobs:
   daily-digest:
     if: github.event_name != 'workflow_dispatch' || !inputs.test_wechat
-    runs-on: ubuntu-latest
+    # The read-only hosted comparison reached 4/6 sources on macOS vs 2/6 on Ubuntu.
+    # A successful run is not proof of full source coverage; inspect the source report.
+    runs-on: macos-latest
     timeout-minutes: 20
     env:
       TZ: Asia/Shanghai
@@ -102,7 +104,7 @@ jobs:
 
   test-wechat:
     if: github.event_name == 'workflow_dispatch' && inputs.test_wechat
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 20
     env:
       TZ: Asia/Shanghai
