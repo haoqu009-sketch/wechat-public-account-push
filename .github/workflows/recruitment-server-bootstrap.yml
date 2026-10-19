@@ -1,0 +1,77 @@
+name: one-time-encrypted-server-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_key_base64:
+        description: '一次性服务器 RSA4096 公钥的 Base64；绝不能填写私钥'
+        type: string
+        required: true
+      fingerprint:
+        description: '服务器 SPKI 公钥 SHA256 指纹，需与管理员预先设置的指纹一致'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medical-imaging-recruitment
+  cancel-in-progress: false
+
+jobs:
+  seal:
+    if: >-
+      github.repository == 'haoqu009-sketch/wechat-public-account-push' &&
+      github.ref == 'refs/heads/master' &&
+      vars.RECRUITMENT_BOOTSTRAP_ARMED == 'true' &&
+      vars.RECRUITMENT_BOOTSTRAP_FINGERPRINT == inputs.fingerprint &&
+      vars.RECRUITMENT_SENDER_OWNER != 'server'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: 安装锁定依赖，不执行安装脚本
+        run: npm ci --prefix recruitment --ignore-scripts --no-audit --no-fund
+      - name: 仅加密招聘推送所需的微信配置
+        env:
+          BOOTSTRAP_PUBLIC_KEY: ${{ inputs.public_key_base64 }}
+          BOOTSTRAP_FINGERPRINT: ${{ inputs.fingerprint }}
+          ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          USER_OPENID: ${{ secrets.USER_OPENID }}
+          ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
+          WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+          RECRUITMENT_TEMPLATE_ID: ${{ secrets.RECRUITMENT_TEMPLATE_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import { readWechatConfig } from './recruitment/wechat.mjs';
+          import { sealCredentials } from './recruitment/credential-envelope.mjs';
+          try {
+            const env = process.env;
+            if (env.GITHUB_REF !== 'refs/heads/master' || env.GITHUB_REPOSITORY !== 'haoqu009-sketch/wechat-public-account-push') throw new Error();
+            const publicPem = Buffer.from(env.BOOTSTRAP_PUBLIC_KEY, 'base64').toString('utf8');
+            const envelope = sealCredentials(readWechatConfig(env), publicPem, {
+              repository: env.GITHUB_REPOSITORY, runId: env.GITHUB_RUN_ID, fingerprint: env.BOOTSTRAP_FINGERPRINT,
+            });
+            await fs.mkdir('encrypted-bootstrap', { mode: 0o700 });
+            await fs.writeFile('encrypted-bootstrap/envelope.json', JSON.stringify(envelope), { flag: 'wx', mode: 0o600 });
+            console.log('最小招聘微信配置已加密；未发送微信、未写入明文文件。');
+          } catch {
+            console.error('加密导出未完成；请核对受保护配置与一次性公钥，不会回显配置。');
+            process.exitCode = 1;
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-bootstrap-${{ github.run_id }}
+          path: encrypted-bootstrap/envelope.json
+          if-no-files-found: error
+          retention-days: 1

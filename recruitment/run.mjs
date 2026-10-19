@@ -29,7 +29,8 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   const dryRun = args.includes('--dry-run');
   const collectOnly = args.includes('--collect-only');
   const sendOnly = args.includes('--send-only');
-  if (collectOnly && sendOnly) throw new Error('不能同时选择采集和发送阶段');
+  const refreshOnly = args.includes('--refresh-only');
+  if ([dryRun, collectOnly, sendOnly, refreshOnly].filter(Boolean).length > 1) throw new Error('采集预览、网页刷新和发送阶段不能同时选择');
   const config = JSON.parse(await fs.readFile(env.RECRUITMENT_CONFIG || path.join(directory, 'config.json'), 'utf8'));
   const stateDir = env.RECRUITMENT_STATE_DIR || path.join(directory, '../.recruitment-state');
   const reportDir = env.RECRUITMENT_REPORT_DIR || path.join(stateDir, 'reports');
@@ -39,7 +40,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   let state = await loadState(stateFile);
   let pending;
   let wechat;
-  if (!dryRun) wechat = readWechatConfig(env);
+  if (!dryRun && !refreshOnly) wechat = readWechatConfig(env);
   if (!sendOnly) {
     const { jobs, coverage, observedPages } = await (services.collect || collect)(config, today, {
       onSourceComplete: result => console.log(`来源检查 ${result.completed}/${result.total}：${result.name}（${result.ok ? '已读取' : '未完成'}，影像线索${result.jobCount}条）`),
@@ -54,7 +55,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
       else if (job.published && daysBetween(today, job.published) > config.lookbackDays && !stillOpen) delete state.jobs[id];
     }
     const available = Object.values(state.jobs);
-    const targets = dryRun ? [{ key: 'preview' }] : wechat.users.map(user => ({ key: recipientKey(user) }));
+    const targets = dryRun || refreshOnly ? [{ key: 'preview' }] : wechat.users.map(user => ({ key: recipientKey(user) }));
     const digests = Object.fromEntries(targets.map(({ key }) => [key, planDigest(available, state.recipients[key] || { sent: {}, reminded: {} }, config, today)]));
     // The shared report covers the union of all recipients' unsent jobs and reminders.
     const merge = field => rankJobs([...new Map(Object.values(digests).flatMap(d => d[field]).map(job => [job.id, job])).values()], config);
@@ -72,9 +73,12 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
     pending = { today, coverage, digests };
     if (!dryRun) {
       await atomicJson(stateFile, state);
-      await atomicJson(planFile, pending);
+      if (!refreshOnly) await atomicJson(planFile, pending);
     }
-    if (dryRun || collectOnly) { console.log(dryRun ? '预览完成，未发送消息、未改变去重状态。' : '采集完成，等待发布详情及发送。'); return; }
+    if (dryRun || collectOnly || refreshOnly) {
+      console.log(dryRun ? '预览完成，未发送消息、未改变去重状态。' : refreshOnly ? '网页刷新采集完成，岗位缓存已保存；未读取微信配置、未发送消息或改变发送记录。' : '采集完成，等待发布详情及发送。');
+      return;
+    }
   } else {
     pending = JSON.parse(await fs.readFile(planFile, 'utf8'));
     if (pending.today !== today) throw new Error('待发送日报不是今天生成，请重新采集');
@@ -101,6 +105,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   if (failures) throw new Error(`${failures}个接收人未完成推送；已成功发送的状态已保留，失败者下次重试`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Production uses a release symlink; compare real paths so CLI execution cannot silently no-op.
+if (process.argv[1] && await fs.realpath(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run().catch(error => { console.error(error.message); process.exitCode = 1; });
 }

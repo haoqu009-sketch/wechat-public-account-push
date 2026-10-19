@@ -1,0 +1,40 @@
+[Unit]
+Description=Daily medical recruitment collection and WeChat digest
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=recruitment-collector
+Group=recruitment-collector
+WorkingDirectory=/opt/recruitment-collector/current
+EnvironmentFile=/etc/recruitment-collector/collector.env
+Environment=NODE_ENV=production
+Environment=TZ=Asia/Shanghai
+Environment=RECRUITMENT_STATE_DIR=/var/lib/recruitment-collector/state
+Environment=RECRUITMENT_REPORT_DIR=/var/lib/recruitment-collector/state/reports
+ExecStart=/usr/bin/flock --nonblock --conflict-exit-code 75 /var/lib/recruitment-collector/job.lock /opt/recruitment-reader/runtime/node/bin/node /opt/recruitment-collector/current/recruitment/server-run.mjs daily
+SuccessExitStatus=75
+TimeoutStartSec=20min
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/recruitment-collector/state /var/lib/recruitment-collector/job.lock
+MemoryHigh=384M
+MemoryMax=512M
+CPUQuota=50%
+TasksMax=64
+LimitNOFILE=1024
+Nice=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=recruitment-collector-daily

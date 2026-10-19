@@ -36,7 +36,11 @@ concurrency:
 
 jobs:
   daily-digest:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.test_wechat && !inputs.daily_preview)
+    # Server ownership disables ALL GitHub publishing/state mutation/sending paths.
+    # Only a pure read-only dry run remains available here after migration.
+    if: >-
+      vars.RECRUITMENT_SENDER_OWNER != 'server' &&
+      (github.event_name != 'workflow_dispatch' || (!inputs.test_wechat && !inputs.daily_preview))
     # The read-only hosted comparison reached 4/6 sources on macOS vs 2/6 on Ubuntu.
     # A successful run is not proof of full source coverage; inspect the source report.
     runs-on: macos-latest
@@ -117,8 +121,43 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  server-diagnostic:
+    # This job deliberately has NO WeChat/sync Secrets, write token, or state publishing.
+    if: >-
+      vars.RECRUITMENT_SENDER_OWNER == 'server' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.dry_run && !inputs.test_wechat && !inputs.daily_preview && !inputs.publish_web_preview))
+    permissions:
+      contents: read
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Shanghai
+      NODE_USE_ENV_PROXY: '1'
+      RECRUITMENT_STATE_DIR: ${{ github.workspace }}/.recruitment-state
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: recruitment/package-lock.json
+      - run: npm ci --prefix recruitment --no-audit --no-fund
+      - run: npm test --prefix recruitment
+      - name: 无密钥只读诊断，不改动服务器网页及发送记录
+        run: node recruitment/run.mjs --dry-run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-owner-diagnostic-${{ github.run_id }}
+          path: .recruitment-state/reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
   test-wechat:
-    if: github.event_name == 'workflow_dispatch' && (inputs.test_wechat || inputs.daily_preview)
+    if: vars.RECRUITMENT_SENDER_OWNER != 'server' && github.event_name == 'workflow_dispatch' && (inputs.test_wechat || inputs.daily_preview)
     runs-on: macos-latest
     timeout-minutes: 20
     env:
