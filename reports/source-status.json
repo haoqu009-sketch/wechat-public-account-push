@@ -1,0 +1,51 @@
+[
+  {
+    "name": "哈尔滨医科大学",
+    "ok": true,
+    "articles": 7,
+    "warnings": [
+      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
+      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
+    ]
+  },
+  {
+    "name": "哈尔滨医科大学附属第一医院",
+    "ok": true,
+    "articles": 7,
+    "warnings": [
+      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
+      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
+    ]
+  },
+  {
+    "name": "哈尔滨医科大学附属第二医院",
+    "ok": true,
+    "articles": 2,
+    "warnings": [
+      "有公告读取失败：来源连接失败（ETIMEDOUT）",
+      "岗位表附件未完成：附件返回网页或下载验证页，需人工核实",
+      "公告附件尚不能确认有无影像岗位：哈尔滨医科大学2027年公开招聘工作人员公告（一）-哈尔滨医科大学人事处 https://hr.hrbmu.edu.cn/info/1117/1737.htm"
+    ]
+  },
+  {
+    "name": "黑龙江省卫生健康委员会",
+    "ok": false,
+    "articles": 0,
+    "warnings": [],
+    "error": "来源连接失败（ETIMEDOUT）"
+  },
+  {
+    "name": "中国医科大学附属第一医院",
+    "ok": false,
+    "articles": 0,
+    "warnings": [],
+    "error": "来源连接失败（UND_ERR_CONNECT_TIMEOUT）"
+  },
+  {
+    "name": "北京协和医院",
+    "ok": false,
+    "articles": 0,
+    "warnings": [],
+    "error": "未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染"
+  }
+]
