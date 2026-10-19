@@ -79,6 +79,10 @@ export async function collectSource(source, config, today, options = {}) {
       const response = await request(url, hosts);
       const html = decodeHtml(response.bytes, response.type);
       if (!/<(?:html|a|body)\b/i.test(html)) throw new Error('来源返回的不是可解析网页');
+      if (i === 0 && source.verifyName) {
+        const identity = pageData(html, response.url, source);
+        if (!`${identity.title} ${identity.text} ${html}`.includes(source.verifyName)) throw new Error('官网名称未通过核验，请人工核对地址');
+      }
       for (const link of linksFrom(html, response.url, hosts)) {
         const kind = classifyLink(link);
         if (kind === 'article') articles.set(link.url, link);

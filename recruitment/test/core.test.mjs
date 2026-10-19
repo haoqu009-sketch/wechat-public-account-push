@@ -160,3 +160,11 @@ test('影像专业的非临床科研和教师岗位不当作影像医师推送',
   assert.equal(makeJob(row.replace('放射科医师', '影像科研助理')), null);
   assert.equal(makeJob(row.replace('放射科医师', '影像教师')), null);
 });
+
+test('来源页面名称不匹配时停止采集，避免将其他学校或医院冒认为目标来源', async () => {
+  const result = await collectSource({ ...source, verifyName: '测试医院' }, config, '2026-10-10', {
+    request: async url => ({ bytes: Buffer.from('<html><title>另一所学校</title><body>人才招聘</body></html>'), url, type: 'text/html' }), pause: async () => {},
+  });
+  assert.equal(result.coverage.ok, false);
+  assert.match(result.coverage.error, /名称未通过核验/);
+});

@@ -14,11 +14,11 @@
   "reminderDays": 3,
   "lookbackDays": 90,
   "sources": [
-    { "id": "hmu", "name": "哈尔滨医科大学", "province": "黑龙江", "url": "https://www.hmu.edu.cn/" },
-    { "id": "hmu1", "name": "哈尔滨医科大学附属第一医院", "province": "黑龙江", "url": "https://www.54dr.com/" },
-    { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmu2.com/" },
-    { "id": "hlj-health", "name": "黑龙江省卫生健康委员会", "province": "黑龙江", "url": "https://wsjkw.hlj.gov.cn/" },
-    { "id": "cmu1", "name": "中国医科大学附属第一医院", "province": "辽宁", "url": "https://www.zgyy.cc/" },
-    { "id": "pumch", "name": "北京协和医院", "province": "北京", "url": "https://www.pumch.cn/" }
+    { "id": "hrbmu", "name": "哈尔滨医科大学", "verifyName": "哈尔滨医科大学", "province": "黑龙江", "url": "https://www.hrbmu.edu.cn/", "allowedHosts": ["www.hrbmu.edu.cn", "hrbmu.edu.cn"] },
+    { "id": "hmu1", "name": "哈尔滨医科大学附属第一医院", "verifyName": "哈尔滨医科大学附属第一医院", "province": "黑龙江", "url": "https://www.54dr.com/", "allowedHosts": ["www.54dr.com", "54dr.com"] },
+    { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "verifyName": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmu2.com/", "allowedHosts": ["www.hrbmu2.com", "hrbmu2.com"] },
+    { "id": "hlj-health", "name": "黑龙江省卫生健康委员会", "verifyName": "黑龙江省卫生健康委员会", "province": "黑龙江", "url": "https://wsjkw.hlj.gov.cn/" },
+    { "id": "cmu1", "name": "中国医科大学附属第一医院", "verifyName": "中国医科大学附属第一医院", "province": "辽宁", "url": "https://www.cmu1h.com/", "allowedHosts": ["www.cmu1h.com", "cmu1h.com"] },
+    { "id": "pumch", "name": "北京协和医院", "verifyName": "北京协和医院", "province": "北京", "url": "https://www.pumch.cn/", "allowedHosts": ["www.pumch.cn", "pumch.cn"] }
   ]
 }
