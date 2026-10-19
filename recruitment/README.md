@@ -14,11 +14,13 @@ node --use-env-proxy recruitment/run.mjs --dry-run
 
 预览不发送消息，不改变已发送状态。报告位于忽略目录 `.recruitment-state/reports/latest.md`，包含各来源成功/失败情况。全部来源失败时返回非零退出码，不能据此声称没有招聘。只有新增、实质更新或首次进入截止前3天提醒窗口时才发送；每日最多5条医师、2条技师和3条提醒。
 
-在 `config.json` 编辑来源及筛选上限。默认六个来源覆盖哈尔滨医科大学及两所附属医院、黑龙江省卫健委，以及辽宁、北京的医院。哈医大及一、二院已配置具体招聘栏目，并允许官网明确转发的人事处公告域名；不代表每个来源都有符合条件的当前招聘。模块最多读取4个目录页和12篇公告。跳转或附件域名需显式加入该来源的 `allowedHosts`，不会自动访问网页上任意域名。
+在 `config.json` 编辑来源及筛选上限。现配置15个来源，包含哈医大及两所附属医院、齐齐哈尔医学院及直属单位、黑龙江省医院、省传染病防治院、省卫健委，以及北京、天津、辽宁、山东医院和吉林大学就业网的官方转发。高校转发不是用人单位，未知地区不当作发布学校所在地。不代表每个来源都有符合条件的当前招聘。最多两个无共享主机的来源并行；单源仍依次读取、保留礼貌延迟，最多4个目录页和12篇公告。跳转或附件域名需显式加入该来源的 `allowedHosts`，不会访问网页上任意域名。
 
 公开GET请求遇到连接重置、暂时超时等传输故障时，最多等待500毫秒后重试一次；HTTP 403/404/406、TLS证书错误、验证码等不会通过重复请求或放宽校验绕过。重试不能保证来源恢复，最终状态以每次报告为准。
 
-HTML表格和XLSX岗位表按行提取，避免把一个岗位的博士要求套用到其他岗位。也支持网址为 `download.jsp`、锚文本为 `.xlsx` 文件名的官方附件。PDF、旧XLS、图片或脚本渲染页面需要人工核实或后续专门适配；附件返回验证码页时明确记录为待人工核实，不绕过验证、不把无结果当成无岗位。无日期公告标注待核实；有明确发布日期时仅取最近90天。有明确报名截止时间时过滤已截止信息；考试、公示等后续流程通知不作为新招聘。
+HTML表格和XLSX岗位表按行提取，学历、学位分别核对；博士专用、届别明确不符、科研导师及栏目导航不当作临床岗位。职业不明确的公告线索不计入医师/技师候选。排序优先明确岗位、硕士与2027届证据、CT方向和黑龙江，但不是报名资格认证。跨来源仅在明确单位、岗位代码、同轮次及条件等强证据一致时合并，保留旧去重记录兼容。
+
+也支持网址为 `download.jsp`、锚文本为 `.xlsx` 文件名的官方附件。PDF、旧XLS、图片或脚本渲染页面需要人工核实或专门适配；验证码页明确记录为待核实，不绕过验证、不把无结果当成无岗位。无日期公告保留未知，不伪造为今天；近90天以外的公告只有明确报名截止仍有效才保留。超过90天未观察的缓存清理。考试、公示等后续流程不作新招聘。
 
 ## Codex 云环境网络配置
 
@@ -34,6 +36,17 @@ www.hrbmush.edu.cn
 wsjkw.hlj.gov.cn
 www.cmu1h.com
 jobs.pumch.cn
+www.qmu.edu.cn
+www.hljsyy.org.cn
+omo-oss-file110.thefastfile.com
+hljjh.org.cn
+www.lnpatcm.com
+v1.cecdn.yun300.cn
+jdjyw.jlu.edu.cn
+www.yuquanhosp.cn
+www.zryhyy.com.cn
+www.tjfch.com.cn
+www.sph.com.cn
 api.github.com
 api.weixin.qq.com
 ```
@@ -57,6 +70,8 @@ api.weixin.qq.com
 
 要查看真实日常内容而非字段占位测试，手动选择 `daily_preview=true`、保持 `test_wechat=false`。流程重新采集并发布报告，再用与正式推送相同的排版发送一次；没有候选时如实显示暂无新增，不编造岗位。此模式不会修改岗位已发送或提醒记录，也不会改变定时任务的“无新增不推送”规则。两个手动预览模式不能同时选择。
 
+只验收网页和跨网络同步时选择 `publish_web_preview=true`，其他两个发送预览保持false。此模式强制只读采集，把报告及网页更新，但不发送微信，也不改岗位去重记录；即使误把dry_run关闭也不会发送。不能与任何微信预览模式同时选择。普通代码push仍仅生成不发布的预览。
+
 模板内容：
 
 ```text
@@ -77,7 +92,13 @@ api.weixin.qq.com
 
 ## 详情及状态持久化
 
-工作流在独立 `recruitment-state` 分支保存 `state.json` 和公开招聘报告，不修改默认分支。微信点击详情打开该分支的 `reports/latest.md`，每条信息附官方公告链接；私有仓库需登录GitHub后访问。无需额外开通网站或GitHub Pages。分支不包含凭据，接收人仅保存不可逆哈希；不要删除此分支，否则会丢失去重记录。
+工作流在独立 `recruitment-state` 分支保存 `state.json` 和招聘报告，不修改默认分支。公共网页数据由严格字段白名单生成 `reports/public.json`，不含密钥、原始接收人或去重记录。网页目录列出所有未确认过期的可展示岗位，不受单条微信数量上限或已发送历史限制。
+
+独立的手机阅读页源码在 `web/`，不加载外部CDN，浏览器仅访问同域数据。自有域名部署步骤见 [Ubuntu部署说明](deploy/README.md)。服务器同步只监听回环端口，使用新建的专用令牌；不能上传管理服务器的SSH私钥到GitHub。
+
+启用网站时设置仓库变量 `RECRUITMENT_PUBLIC_BASE_URL` 与Secret `RECRUITMENT_SITE_SYNC_TOKEN`。发布器先同步，再完整回读核对公共JSON，成功才把微信详情指向本次不可变快照 `/?report=<reportId>`。未配置或验证失败时自动回退当前提交的GitHub报告，不用自域的旧数据冒充新日报；GitHub提交标识也不可用时明确降级为状态分支链接。私有仓库的备用报告需要GitHub登录。
+
+不要删除 `recruitment-state` 分支，否则会丢失去重记录。状态分支不包含凭据，接收人仅保存不可逆哈希。
 
 工作流需要 `contents: write` 权限。先发布可点击报告再发送微信，最后保存逐接收人的成功记录；部分接收人失败时已成功者不会重新发送，失败者下次重试。若微信接受后持久化状态本身失败，下一次可能重复发送，应先检查失败运行；外部消息发送与Git提交无法实现跨系统原子事务。
 
@@ -88,7 +109,8 @@ api.weixin.qq.com
 node --use-env-proxy recruitment/github-state.mjs restore
 node --use-env-proxy recruitment/run.mjs --collect-only
 node --use-env-proxy recruitment/github-state.mjs publish
-# RECRUITMENT_REPORT_URL 指向已经发布的HTTPS报告。
+node --use-env-proxy recruitment/publish-web.mjs
+# RECRUITMENT_REPORT_URL 使用上述已验证输出的HTTPS链接，不能手填未经验证的站点。
 node --use-env-proxy recruitment/run.mjs --send-only
 node --use-env-proxy recruitment/github-state.mjs publish
 ```

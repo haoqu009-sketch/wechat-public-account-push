@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { collect } from './collector.mjs';
 import { chinaDate, daysBetween, planDigest, rankJobs, markDelivered, renderMarkdown } from './core.mjs';
 import { readWechatConfig, recipientKey, getAccessToken, sendDigest } from './wechat.mjs';
+import { createPublicReport } from './public-report.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 export async function atomicJson(file, data) {
@@ -40,14 +41,17 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   let wechat;
   if (!dryRun) wechat = readWechatConfig(env);
   if (!sendOnly) {
-    const { jobs, coverage, observedPages } = await (services.collect || collect)(config, today);
+    const { jobs, coverage, observedPages } = await (services.collect || collect)(config, today, {
+      onSourceComplete: result => console.log(`来源检查 ${result.completed}/${result.total}：${result.name}（${result.ok ? '已读取' : '未完成'}，影像线索${result.jobCount}条）`),
+    });
     const refreshed = new Set(observedPages);
     for (const [id, job] of Object.entries(state.jobs)) if (refreshed.has(job.url)) delete state.jobs[id];
     for (const job of jobs) state.jobs[job.id] = { ...job, collectedAt: today };
     // Retain recent observations during a source outage, but label their actual collection date.
     for (const [id, job] of Object.entries(state.jobs)) {
-      if (job.published && daysBetween(today, job.published) > config.lookbackDays) delete state.jobs[id];
-      else if (job.collectedAt && daysBetween(today, job.collectedAt) > config.lookbackDays) delete state.jobs[id];
+      const stillOpen = job.deadline && daysBetween(job.deadline, today) >= 0;
+      if (job.collectedAt && daysBetween(today, job.collectedAt) > config.lookbackDays) delete state.jobs[id];
+      else if (job.published && daysBetween(today, job.published) > config.lookbackDays && !stillOpen) delete state.jobs[id];
     }
     const available = Object.values(state.jobs);
     const targets = dryRun ? [{ key: 'preview' }] : wechat.users.map(user => ({ key: recipientKey(user) }));
@@ -61,6 +65,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
     await fs.writeFile(path.join(reportDir, `${today}.md`), markdown);
     await atomicJson(path.join(reportDir, 'source-status.json'), coverage);
     await atomicJson(path.join(reportDir, 'preview.json'), report);
+    await atomicJson(path.join(reportDir, 'public.json'), createPublicReport({ jobs: available, digest: report, coverage, config }));
     console.log(`来源成功 ${coverage.filter(item => item.ok).length}/${coverage.length}，本次采集影像线索 ${jobs.length} 条；医师 ${report.physicians.length}，技师 ${report.technicians.length}，提醒 ${report.reminders.length}。`);
     for (const item of coverage) if (!item.ok) console.error(`来源不可用：${item.name}（${item.error}）`);
     if (!coverage.some(item => item.ok)) throw new Error('全部来源失败，已生成诊断报告；不会推送“没有招聘”或更新已发送状态');

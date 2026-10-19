@@ -19,6 +19,10 @@ on:
         description: '立即按日常样式发送真实采集日报，即使无新增也发送一次，不改变岗位去重记录'
         type: boolean
         default: false
+      publish_web_preview:
+        description: '仅发布真实采集报告和招聘网页，不发送微信、不改变岗位去重记录'
+        type: boolean
+        default: false
   schedule:
     # 每天北京时间 07:30；GitHub Actions 定时任务可能延迟。
     - cron: '30 23 * * *'
@@ -42,7 +46,7 @@ jobs:
       NODE_USE_ENV_PROXY: '1'
       RECRUITMENT_STATE_DIR: ${{ github.workspace }}/.recruitment-state
       # 代码部署自动跑预览；仅定时运行或手动取消dry_run时发送。
-      DRY_RUN: ${{ github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.dry_run) && 'true' || 'false' }}
+      DRY_RUN: ${{ ((github.event_name == 'workflow_dispatch' && inputs.publish_web_preview) || (github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.dry_run))) && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -75,10 +79,17 @@ jobs:
           RECRUITMENT_TEMPLATE_ID: ${{ secrets.RECRUITMENT_TEMPLATE_ID }}
       - name: 发布日报详情
         id: publish
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_web_preview)
         run: node recruitment/github-state.mjs publish
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: 同步自域详情并核验公开数据
+        id: web
+        if: env.DRY_RUN != 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_web_preview)
+        run: node recruitment/publish-web.mjs
+        env:
+          RECRUITMENT_PUBLIC_BASE_URL: ${{ vars.RECRUITMENT_PUBLIC_BASE_URL }}
+          RECRUITMENT_SITE_SYNC_TOKEN: ${{ secrets.RECRUITMENT_SITE_SYNC_TOKEN }}
       - name: 发送微信招聘简报
         id: send
         if: env.DRY_RUN != 'true'
@@ -91,7 +102,7 @@ jobs:
           ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
           WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
           RECRUITMENT_TEMPLATE_ID: ${{ secrets.RECRUITMENT_TEMPLATE_ID }}
-          RECRUITMENT_REPORT_URL: https://github.com/${{ github.repository }}/blob/recruitment-state/reports/latest.md
+          RECRUITMENT_REPORT_URL: ${{ steps.web.outputs.report_url }}
       - name: 保存逐接收人发送状态
         if: always() && steps.publish.outcome == 'success'
         run: node recruitment/github-state.mjs publish
@@ -119,7 +130,12 @@ jobs:
         env:
           TEMPLATE_TEST: ${{ inputs.test_wechat }}
           DAILY_PREVIEW: ${{ inputs.daily_preview }}
+          WEB_ONLY: ${{ inputs.publish_web_preview }}
         run: |
+          if [ "$WEB_ONLY" = true ]; then
+            echo '::error::仅网页预览不能同时选择任何微信发送模式。'
+            exit 1
+          fi
           if [ "$TEMPLATE_TEST" = true ] && [ "$DAILY_PREVIEW" = true ]; then
             echo '::error::占位模板测试与日常日报预览不能同时选择。'
             exit 1
@@ -153,6 +169,12 @@ jobs:
         run: node recruitment/github-state.mjs publish
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: 同步自域详情并核验公开数据
+        id: web
+        run: node recruitment/publish-web.mjs
+        env:
+          RECRUITMENT_PUBLIC_BASE_URL: ${{ vars.RECRUITMENT_PUBLIC_BASE_URL }}
+          RECRUITMENT_SITE_SYNC_TOKEN: ${{ secrets.RECRUITMENT_SITE_SYNC_TOKEN }}
       - name: 发送明确标注的模板测试消息
         if: inputs.test_wechat && !inputs.daily_preview
         run: node recruitment/check-wechat.mjs --send-test
@@ -163,7 +185,7 @@ jobs:
           USER_OPENID: ${{ secrets.USER_OPENID }}
           ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
           RECRUITMENT_TEMPLATE_ID: ${{ secrets.RECRUITMENT_TEMPLATE_ID }}
-          RECRUITMENT_REPORT_URL: https://github.com/${{ github.repository }}/blob/recruitment-state/reports/latest.md
+          RECRUITMENT_REPORT_URL: ${{ steps.web.outputs.report_url }}
       - name: 发送日常样式的真实采集日报
         if: inputs.daily_preview
         run: node recruitment/check-wechat.mjs --send-daily-preview
@@ -174,7 +196,7 @@ jobs:
           USER_OPENID: ${{ secrets.USER_OPENID }}
           ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
           RECRUITMENT_TEMPLATE_ID: ${{ secrets.RECRUITMENT_TEMPLATE_ID }}
-          RECRUITMENT_REPORT_URL: https://github.com/${{ github.repository }}/blob/recruitment-state/reports/latest.md
+          RECRUITMENT_REPORT_URL: ${{ steps.web.outputs.report_url }}
       - name: 保留手动预览采集报告
         if: always()
         uses: actions/upload-artifact@v4

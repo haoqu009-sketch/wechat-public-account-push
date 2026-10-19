@@ -54,7 +54,8 @@ export async function collectPumchSource(source, config, today, options = {}) {
     if (!complete) coverage.warnings.push(`公开接口共有${total}篇公告，本次有界检查前${notices.size}篇，未覆盖全部历史公告`);
     const recent = [...notices.values()].filter(info => {
       const published = dateOf(info.upTime) || dateOf(info.timeCreated) || dateOf(info.createTime);
-      return !published || daysBetween(today, published) <= config.lookbackDays;
+      const deadline = dateOf(info.timeEnd);
+      return !published || daysBetween(today, published) <= config.lookbackDays || (deadline && deadline >= today);
     });
     if (recent.length > maxDetails) coverage.warnings.push(`近期公告${recent.length}篇，本次最多读取${maxDetails}篇详情，其余尚未检查`);
     for (const notice of recent.slice(0, maxDetails)) {

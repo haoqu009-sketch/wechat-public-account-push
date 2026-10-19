@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { clean, imaging, linksFrom, classifyLink, pageData, jobFrom, safeUrl, daysBetween } from './core.mjs';
+import { clean, imaging, linksFrom, classifyLink, pageData, jobFrom, safeUrl, daysBetween, extractDeadline } from './core.mjs';
 import { collectPumchSource } from './pumch.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -124,7 +124,15 @@ export async function collectSource(source, config, today, options = {}) {
         const html = decodeHtml(response.bytes, response.type);
         const page = pageData(html, response.url, source);
         coverage.articles++;
-        if (page.published && daysBetween(today, page.published) > config.lookbackDays) { observedPages.push(page.url); continue; }
+        // Long-running notices can remain open beyond the publication lookback.
+        // Retain only an explicitly parsed future/current application deadline;
+        // an undated or vague "long-term" notice does not gain fresh-date evidence.
+        const deadlineYear = Number((page.published || today).slice(0, 4));
+        const stillOpen = [page.text, ...page.rows].some(text => {
+          const deadline = extractDeadline(text, deadlineYear);
+          return deadline && deadline >= today;
+        });
+        if (page.published && daysBetween(today, page.published) > config.lookbackDays && !stillOpen) { observedPages.push(page.url); continue; }
         if (!page.published) coverage.warnings.push(`有公告未识别发布日期：${clean(link.title).slice(0, 40)}`);
         const rows = [...page.rows];
         let attachmentFailure = false;
@@ -161,11 +169,61 @@ export async function collectSource(source, config, today, options = {}) {
   return { jobs, coverage, observedPages };
 }
 
-export async function collect(config, today, options) {
-  const results = [];
-  // Serial sources keep load low and bound memory used by spreadsheets.
-  for (const source of config.sources.filter(item => item.enabled !== false)) {
-    results.push(await collectSource(source, config, today, options));
+export async function collect(config, today, options = {}) {
+  const { collectSource: collectOne = collectSource, onSourceComplete, ...sourceOptions } = options;
+  const sources = config.sources.filter(item => item.enabled !== false);
+  const results = new Array(sources.length);
+  const hostsFor = source => {
+    const hosts = new Set();
+    try { hosts.add(new URL(source.url).hostname.toLowerCase()); }
+    catch { hosts.add('__invalid_source_host__'); }
+    for (const host of source.allowedHosts || []) if (typeof host === 'string') hosts.add(host.toLowerCase());
+    return hosts;
+  };
+  const pending = sources.map((source, index) => ({ source, index, hosts: hostsFor(source) }));
+  const active = new Map(), busyHosts = new Set();
+  let completed = 0, callbackFailed = false;
+  const collectEntry = async ({ source, index }) => {
+    let result;
+    try {
+      result = await collectOne(source, config, today, sourceOptions);
+      if (!result || !Array.isArray(result.jobs) || !Array.isArray(result.observedPages)
+        || !result.coverage || typeof result.coverage.ok !== 'boolean') throw new Error('Invalid source result');
+    } catch {
+      result = {
+        jobs: [], observedPages: [],
+        coverage: { name: source.name, ok: false, articles: 0, warnings: [], error: '来源采集未完成（异常详情已隐藏）' },
+      };
+    }
+    results[index] = result;
+    completed++;
+    if (typeof onSourceComplete === 'function') {
+      try {
+        await onSourceComplete({
+          name: source.name, index, completed, total: sources.length, ok: result.coverage.ok,
+          jobCount: result.jobs.length,
+          articleCount: Number.isInteger(result.coverage.articles) && result.coverage.articles >= 0 ? result.coverage.articles : 0,
+        });
+      } catch { callbackFailed = true; }
+    }
+  };
+  // Only distinct declared source hosts may overlap. Internal pages, attachments
+  // and their existing polite delays remain sequential inside collectSource.
+  while (pending.length || active.size) {
+    while (active.size < 2) {
+      const next = pending.findIndex(entry => [...entry.hosts].every(host => !busyHosts.has(host)));
+      if (next < 0) break;
+      const entry = pending.splice(next, 1)[0];
+      for (const host of entry.hosts) busyHosts.add(host);
+      const task = collectEntry(entry).finally(() => {
+        for (const host of entry.hosts) busyHosts.delete(host);
+        active.delete(entry.index);
+      });
+      active.set(entry.index, task);
+    }
+    // Every task stays in active until completion; no hard timeout abandons work.
+    if (active.size) await Promise.race(active.values());
   }
+  if (callbackFailed) throw new Error('来源进度回调失败；全部采集任务已结束，异常详情已隐藏');
   return { jobs: results.flatMap(item => item.jobs), coverage: results.map(item => item.coverage), observedPages: results.flatMap(item => item.observedPages) };
 }

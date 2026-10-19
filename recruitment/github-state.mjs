@@ -50,7 +50,7 @@ export async function sync(mode, env = process.env, fetcher = fetch) {
   if ((current?.object.sha || null) !== previous.sha) throw new Error('远程状态已有其他更新，请重新运行，避免覆盖');
   const entries = [{ path: 'state.json', mode: '100644', type: 'blob', content: await fs.readFile(path.join(root, 'state.json'), 'utf8') }];
   for (const name of await fs.readdir(path.join(root, 'reports'))) {
-    if (!/^(?:latest\.md|\d{4}-\d{2}-\d{2}\.md|source-status\.json|preview\.json)$/.test(name)) continue;
+    if (!/^(?:latest\.md|\d{4}-\d{2}-\d{2}\.md|source-status\.json|preview\.json|public\.json)$/.test(name)) continue;
     entries.push({ path: `reports/${name}`, mode: '100644', type: 'blob', content: await fs.readFile(path.join(root, 'reports', name), 'utf8') });
   }
   const tree = await api('/git/trees', { ...(previous.tree ? { base_tree: previous.tree } : {}), tree: entries });

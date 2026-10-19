@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#163448">
+    <meta name="description" content="医学影像官方招聘信息速览，查看岗位条件、报名截止与采集来源状态。">
+    <title>医学影像招聘速览</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#job-results">跳到岗位列表</a>
+    <main class="page-shell">
+      <header class="page-header">
+        <div class="heading-row">
+          <div>
+            <p class="eyebrow"><span class="brand-mark" aria-hidden="true">＋</span> 官方来源 · 影像职业观察</p>
+            <h1>医学影像招聘速览</h1>
+          </div>
+          <button class="refresh-button" id="refresh" type="button"><span aria-hidden="true">↻</span><span>刷新</span></button>
+        </div>
+        <p class="report-date" id="report-date">正在读取日报日期与生成时间…</p>
+        <div class="preference"><span class="preference-label">关注偏好</span><p>2027届 · 硕士 · CT方向<span class="preference-divider">｜</span>黑龙江优先</p></div>
+        <p class="preference-note">偏好用于信息排序，不代表已符合岗位资格。</p>
+      </header>
+
+      <aside id="version-notice" class="notice version-notice" role="status" hidden></aside>
+
+      <section class="stats" aria-label="报告概览">
+        <div class="stat"><span class="stat-label">当前岗位</span><strong id="active-count">—</strong><span class="stat-note">含截止尚待核实的线索</span></div>
+        <div class="stat"><span class="stat-label">本轮候选</span><strong id="new-count">—</strong><span class="stat-note">候选不等于今日新发布</span></div>
+        <div class="stat"><span class="stat-label">3日内截止</span><strong id="closing-count">—</strong><span class="stat-note">按北京时间今日计算</span></div>
+      </section>
+
+      <section class="coverage-panel" aria-labelledby="coverage-title">
+        <div class="coverage-heading"><span class="status-dot" id="coverage-dot" aria-hidden="true"></span><h2 id="coverage-title">来源与核验范围</h2><span class="coverage-count" id="coverage-count">读取中</span></div>
+        <p class="coverage-brief" id="coverage-brief">正在读取来源状态。具体资格与报名安排请以官方公告为准。</p>
+        <details class="coverage-details">
+          <summary>完整核验说明与局限</summary>
+          <ul class="limitations" id="limitations"><li>正在读取采集状态。具体资格、报名时间与附件要求请以官方公告为准。</li></ul>
+        </details>
+      </section>
+
+      <section class="filters" aria-label="筛选岗位">
+        <div class="tabs" role="tablist" aria-label="岗位类别">
+          <button type="button" role="tab" class="tab active" id="tab-all" aria-selected="true" aria-controls="job-results" data-tab="all">全部 <span id="tab-count-all">—</span></button>
+          <button type="button" role="tab" class="tab" id="tab-physician" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="physician">影像医师 <span id="tab-count-physician">—</span></button>
+          <button type="button" role="tab" class="tab" id="tab-technician" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="technician">技师候补 <span id="tab-count-technician">—</span></button>
+          <button type="button" role="tab" class="tab" id="tab-closing" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="closing">临近截止 <span id="tab-count-closing">—</span></button>
+        </div>
+        <div class="quick-filter">
+          <label class="search-field"><span>关键词</span><input id="search" type="search" placeholder="搜索医院、岗位或专业" autocomplete="off" enterkeyhint="search"></label>
+        </div>
+        <details class="more-filters">
+          <summary><span>更多筛选</span><span class="more-filter-summary" id="more-filter-summary">地区 · 方向 · 排序</span></summary>
+          <div class="filter-fields">
+            <label><span>地区</span><select id="province"><option value="">全部地区</option></select></label>
+            <label><span>影像方向</span><select id="focus"><option value="">全部方向</option><option value="ct">含 CT 方向</option><option value="other">其他影像方向</option><option value="unknown">方向待核实</option></select></label>
+            <label><span>排序</span><select id="sort"><option value="recommended">推荐顺序</option><option value="deadline">截止日期优先</option><option value="published">最新发布优先</option></select></label>
+          </div>
+        </details>
+      </section>
+
+      <section id="job-results" class="results" role="tabpanel" aria-labelledby="tab-all" tabindex="0" aria-busy="true">
+        <div class="results-heading"><h2>岗位信息</h2><p id="result-count" aria-live="polite" aria-atomic="true">正在加载真实采集数据…</p></div>
+        <div id="loading" class="loading-state" role="status"><span class="loading-dot" aria-hidden="true"></span><p>正在读取岗位与来源状态</p></div>
+        <div id="empty-state" class="empty-state" hidden><span class="empty-icon" aria-hidden="true">⌕</span><h3 id="empty-title"></h3><p id="empty-description"></p><button type="button" class="secondary-button" id="reset-filters" hidden>清除筛选</button><button type="button" class="secondary-button" id="retry" hidden>重新读取</button></div>
+        <ol id="jobs" class="job-list"></ol>
+      </section>
+
+      <details class="source-diagnostics" id="source-diagnostics">
+        <summary><span>采集来源与诊断</span><span class="source-summary" id="source-summary">正在读取</span></summary>
+        <p class="source-explanation">“读取成功”仅表示本次取得了可解析内容，不代表全部历史公告与附件已核验。</p>
+        <ul id="source-list" class="source-list"></ul>
+      </details>
+      <footer class="page-footer"><p>信息仅用于招聘线索整理。报名资格、岗位要求及最终安排，以用人单位最新官方公告为准。</p><p class="report-id" id="report-id"></p></footer>
+      <noscript><p class="notice">此页面需要 JavaScript 读取真实采集报告。请在浏览器中启用 JavaScript 后重试。</p></noscript>
+    </main>
+  </body>
+</html>

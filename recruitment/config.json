@@ -19,6 +19,15 @@
     { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "verifyName": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmush.edu.cn/xxgk/rczp.htm", "isListing": true, "allowedHosts": ["www.hrbmush.edu.cn", "hr.hrbmu.edu.cn", "www.hrbmu.edu.cn"] },
     { "id": "hlj-health", "name": "黑龙江省卫生健康委员会", "verifyName": "黑龙江省卫生健康委员会", "province": "黑龙江", "url": "https://wsjkw.hlj.gov.cn/" },
     { "id": "cmu1", "name": "中国医科大学附属第一医院", "verifyName": "中国医科大学附属第一医院", "province": "辽宁", "url": "https://www.cmu1h.com/", "allowedHosts": ["www.cmu1h.com", "cmu1h.com"] },
-    { "id": "pumch", "name": "北京协和医院", "type": "pumch-api", "verifyName": "北京协和医院", "province": "北京", "url": "https://jobs.pumch.cn/", "allowedHosts": ["jobs.pumch.cn"] }
+    { "id": "pumch", "name": "北京协和医院", "type": "pumch-api", "verifyName": "北京协和医院", "province": "北京", "url": "https://jobs.pumch.cn/", "allowedHosts": ["jobs.pumch.cn"] },
+    { "id": "qmu", "name": "齐齐哈尔医学院及直属单位", "verifyName": "齐齐哈尔医学院", "province": "黑龙江", "url": "https://www.qmu.edu.cn/gkzpgwxx/list.htm", "isListing": true, "allowedHosts": ["www.qmu.edu.cn"], "sourceKind": "official-employer-group" },
+    { "id": "hlj-hospital", "name": "黑龙江省医院", "verifyName": "黑龙江省医院", "province": "黑龙江", "url": "https://www.hljsyy.org.cn/News/1932629810448056320.html", "isListing": true, "allowedHosts": ["www.hljsyy.org.cn", "omo-oss-file110.thefastfile.com"], "sourceKind": "official-employer" },
+    { "id": "hlj-infectious", "name": "黑龙江省传染病防治院", "verifyName": "黑龙江省传染病防治院", "province": "黑龙江", "url": "https://hljjh.org.cn/xwdt.php?lm=16", "isListing": true, "allowedHosts": ["hljjh.org.cn"], "sourceKind": "official-employer" },
+    { "id": "lnpatcm", "name": "辽宁中医药大学附属第二医院", "verifyName": "辽宁中医药大学附属第二医院", "province": "辽宁", "url": "https://www.lnpatcm.com/news/31/", "isListing": true, "allowedHosts": ["www.lnpatcm.com", "v1.cecdn.yun300.cn"], "sourceKind": "official-employer" },
+    { "id": "jlu-medical", "name": "吉林大学就业网（高校官方转发）", "verifyName": "吉林大学就业网", "province": "全国", "publisherProvince": "吉林", "url": "https://jdjyw.jlu.edu.cn/portal/recruit/list?filterParams%5BcompanyNatureCategory%5D=40&type=1", "isListing": true, "allowedHosts": ["jdjyw.jlu.edu.cn"], "sourceKind": "university-repost", "isRepost": true },
+    { "id": "tsinghua-yuquan", "name": "清华大学玉泉医院", "verifyName": "清华大学玉泉医院", "province": "北京", "url": "https://www.yuquanhosp.cn/Html/News/Columns/26/Index.html", "isListing": true, "allowedHosts": ["www.yuquanhosp.cn"], "sourceKind": "official-employer" },
+    { "id": "china-japan-friendship", "name": "中日友好医院", "verifyName": "中日友好医院", "province": "北京", "url": "https://www.zryhyy.com.cn/zryh/c100024/dz_common_list.shtml", "isListing": true, "allowedHosts": ["www.zryhyy.com.cn"], "sourceKind": "official-employer" },
+    { "id": "tianjin-first-center", "name": "天津市第一中心医院", "verifyName": "天津市第一中心医院", "province": "天津", "url": "https://www.tjfch.com.cn/rlzy/byszp/", "isListing": true, "allowedHosts": ["www.tjfch.com.cn"], "sourceKind": "official-employer" },
+    { "id": "shandong-provincial", "name": "山东省立医院", "verifyName": "山东省立医院", "province": "山东", "url": "https://www.sph.com.cn/Html/News/Columns/124/1.html", "isListing": true, "allowedHosts": ["www.sph.com.cn"], "sourceKind": "official-employer" }
   ]
 }
