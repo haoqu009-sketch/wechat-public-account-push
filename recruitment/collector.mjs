@@ -7,10 +7,16 @@ export async function download(url, hosts, fetcher = fetch, limit = 5_000_000) {
   let current = safeUrl(url, url, hosts);
   if (!current) throw new Error('链接不在配置的HTTPS来源范围内');
   for (let redirects = 0; redirects <= 4; redirects++) {
-    const response = await fetcher(current, {
-      redirect: 'manual', signal: AbortSignal.timeout(20_000),
-      headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/octet-stream;q=0.8' },
-    });
+    let response;
+    try {
+      response = await fetcher(current, {
+        redirect: 'manual', signal: AbortSignal.timeout(20_000),
+        headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/octet-stream;q=0.8' },
+      });
+    } catch (error) {
+      const code = error.cause?.code || error.code || error.name;
+      throw new Error(`来源连接失败（${String(code || 'NETWORK_ERROR').replace(/[^\w-]/g, '')}）`);
+    }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const next = safeUrl(response.headers.get('location'), current, hosts);
       await response.body?.cancel();
@@ -90,7 +96,7 @@ export async function collectSource(source, config, today, options = {}) {
       }
       await pause(400);
     }
-    if (!discoveredIndex && !articles.size) throw new Error('未找到招聘入口，请核对来源网址');
+    if (!discoveredIndex && !articles.size) throw new Error('未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染');
     let attempted = 0;
     for (const link of [...articles.values()].slice(0, 12)) {
       attempted++;
@@ -104,14 +110,17 @@ export async function collectSource(source, config, today, options = {}) {
         const rows = [...page.rows];
         let attachmentFailure = false;
         for (const attachment of page.attachments.slice(0, 3)) {
-          if (!/\.xlsx(?:\?|$)/i.test(attachment.url)) {
+          if (attachment.format !== 'xlsx') {
             coverage.warnings.push('有PDF或旧版XLS附件需人工核对');
             continue;
           }
           try {
             const file = await request(attachment.url, hosts);
+            if (/html/i.test(file.type) || /^\s*(?:<!doctype html|<html)/i.test(file.bytes.subarray(0, 100).toString('utf8'))) {
+              throw new Error('附件返回网页或下载验证页，需人工核实');
+            }
             rows.push(...await spreadsheetRows(file.bytes));
-          } catch { attachmentFailure = true; coverage.warnings.push('有岗位表附件下载或解析失败'); }
+          } catch (error) { attachmentFailure = true; coverage.warnings.push(`岗位表附件未完成：${error.message}`); }
           await pause(400);
         }
         if (rows.length) {

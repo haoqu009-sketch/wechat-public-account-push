@@ -10,7 +10,7 @@ const dayNumber = value => Date.parse(`${value}T00:00:00+08:00`) / 86400000;
 export const daysBetween = (a, b) => Math.round(dayNumber(a) - dayNumber(b));
 export const imaging = /医学影像|影像医学|放射(?:科|诊断|影像)|影像(?:科|中心|诊断|医师|技师)|\b(?:CT|MRI|MR)\b|磁共振|核磁/i;
 const recruitment = /招聘|招录|人才引进|诚聘|招贤/;
-const procedural = /拟聘|拟录|公示|面试(?:名单|成绩|通知)|笔试(?:成绩|通知)|体检|递补|资格(?:复审|审查结果)/;
+const procedural = /拟聘|拟录|公示|面试(?:名单|成绩|通知)|笔试(?:成绩|通知)|体检|递补|资格(?:复审|审查结果)|考试\s*(?:的\s*)?通知$/;
 
 export function safeUrl(value, base, hosts) {
   try {
@@ -39,6 +39,8 @@ export function linksFrom(html, url, hosts) {
 
 export function classifyLink(link) {
   if (procedural.test(link.title)) return null;
+  // Exact menu labels are listing pages; a longer dated recruitment notice is still an article.
+  if (/^(?:人才招聘|招聘信息|招聘公告|招贤纳士|人事处|人事招聘|通知公告)$/.test(clean(link.title))) return 'index';
   if (recruitment.test(link.title) && /公告|简章|通知|20\d{2}|需求|岗位/.test(link.title)) return 'article';
   if (/人才招聘|招聘信息|招聘公告|招贤纳士|人事处|人事招聘|通知公告/.test(link.title)) return 'index';
   return null;
@@ -58,7 +60,7 @@ export function datesIn(text, year) {
 
 export function extractDeadline(text, year) {
   // Only dates explicitly associated with registration; never infer from graduation/exam dates.
-  const labels = [...text.matchAll(/报名(?:截止(?:时间|日期)?|时间|日期)|截止(?:报名|时间|日期)|报名.{0,8}?截至/g)];
+  const labels = [...text.matchAll(/报名\s*(?:截止(?:时间|日期)?|时间|日期)|截止(?:报名|时间|日期)|报名.{0,8}?截至/g)];
   for (const match of labels) {
     const span = text.slice(match.index, match.index + 100).split(/。|；|;/)[0];
     const dates = datesIn(span, year);
@@ -113,7 +115,12 @@ export function pageData(html, url, source) {
     }
   });
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
-  const attachments = linksFrom(html, url, hosts).filter(link => /\.(?:xlsx?|pdf)(?:\?|$)/i.test(link.url));
+  const attachments = linksFrom(html, url, hosts).flatMap(link => {
+    // University CMS downloads often use download.jsp while the anchor retains the file name.
+    const format = (link.url.match(/\.(xlsx?|pdf)(?:\?|$)/i)?.[1]
+      || link.title.match(/\.(xlsx?|pdf)$/i)?.[1])?.toLowerCase();
+    return format ? [{ ...link, format }] : [];
+  });
   return { title, text, published, rows, attachments, url };
 }
 

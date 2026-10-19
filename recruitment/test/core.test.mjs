@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { safeUrl, datesIn, extractDeadline, pageData, jobFrom, planDigest, markDelivered, renderMarkdown, wechatData } from '../core.mjs';
+import { safeUrl, classifyLink, datesIn, extractDeadline, pageData, jobFrom, planDigest, markDelivered, renderMarkdown, wechatData } from '../core.mjs';
 import { spreadsheetRows, collectSource, download } from '../collector.mjs';
 import { readWechatConfig, sendDigest, getAccessToken, recipientKey } from '../wechat.mjs';
 import ExcelJS from 'exceljs';
@@ -21,6 +21,25 @@ test('只提取明确报名日期，不把毕业时间当截止；拒绝无效�
   assert.equal(extractDeadline('2027年6月取得毕业证，2027年7月入职', 2026), null);
   assert.equal(extractDeadline(page.text, 2026), '2026-10-31');
   assert.deepEqual(datesIn('2026年2月30日', 2026), []);
+});
+
+test('实际公告中报名与时间标签间留白仍识别截止，不误取毕业或考试日期', () => {
+  const notice = '毕业时间：2027年6月30日。（二）报名 1.网上报名 时间：2026年9月21日--2026年10月14日16:00时；2.现场确认时间：2026年10月20日；考试时间：2026年10月25日。';
+  assert.equal(extractDeadline(notice, 2026), '2026-10-14');
+  assert.equal(extractDeadline('网上报名\n时间：2026年9月21日--2026年10月14日16:00时；', 2026), '2026-10-14');
+  for (const text of ['毕业时间：2027年6月30日。', '考试时间：2026年10月25日。', '现场确认时间：2026年10月20日。', '报名须知：考试时间为2026年10月25日。']) {
+    assert.equal(extractDeadline(text, 2026), null);
+  }
+  const announcement = { ...page, published: '2026-09-21', text: notice };
+  const job = jobFrom(row, announcement, source, config.profile, 1);
+  assert.equal(job.deadline, '2026-10-14');
+  assert.equal(planDigest([job], empty(), config, '2026-10-19').physicians.length, 0);
+});
+
+test('工作人员考试的通知属于招聘后续流程，新的招聘公告仍保留', () => {
+  assert.equal(classifyLink({ title: '哈尔滨医科大学2027年公开招聘（一）工作人员考试的通知' }), null);
+  assert.equal(classifyLink({ title: '哈尔滨医科大学2027年公开招聘（一）工作人员考试通知' }), null);
+  assert.equal(classifyLink({ title: '哈尔滨医科大学2027年公开招聘（一）工作人员公告' }), 'article');
 });
 
 test('表格按岗位筛选，其他岗位的博士要求不污染硕士岗位', () => {
@@ -99,6 +118,87 @@ test('采集流程发现公告、读取表格；来源故障不冒充无岗位',
   const failure = await collectSource(source, config, '2026-10-10', { request: async () => { throw new Error('HTTP 403'); } });
   assert.equal(failure.coverage.ok, false);
   assert.match(failure.coverage.error, /403/);
+});
+
+test('招聘公告栏目优先识别为目录，继续读取其中具体公告', async () => {
+  assert.equal(classifyLink({ title: '招聘公告' }), 'index');
+  assert.equal(classifyLink({ title: '2027届影像医师招聘公告' }), 'article');
+  assert.equal(classifyLink({ title: '2027届招聘拟聘公示' }), null);
+  const listing = 'https://hospital.example/recruitment/';
+  const home = { ...source, isListing: false, verifyName: '测试医院' };
+  const pages = new Map([
+    [home.url, '<html><title>测试医院</title><body><a href="/recruitment/">招聘公告</a></body></html>'],
+    [listing, '<html><body><a href="/job/1">2027届影像医师招聘公告</a></body></html>'],
+    [page.url, '<html><h1>2027届影像医师招聘公告</h1><article>发布日期：2026-10-01。<table><tr><th>岗位</th><th>学历</th><th>条件</th></tr><tr><td>放射科医师</td><td>硕士</td><td>2027届</td></tr></table></article></html>'],
+  ]);
+  const requested = [];
+  const request = async url => {
+    requested.push(url);
+    assert.ok(pages.has(url), `未配置的测试页面：${url}`);
+    return { bytes: Buffer.from(pages.get(url)), url, type: 'text/html;charset=utf-8' };
+  };
+  const result = await collectSource(home, config, '2026-10-10', { request, pause: async () => {} });
+  assert.deepEqual(requested, [home.url, listing, page.url]);
+  assert.equal(result.coverage.ok, true);
+  assert.equal(result.coverage.articles, 1);
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].url, page.url);
+  assert.equal(result.jobs[0].status, 'priority');
+});
+
+test('官方download.jsp附件按锚文本识别XLSX并采集岗位，跨域附件仍被拒绝', async () => {
+  const university = { name: '哈尔滨医科大学', province: '黑龙江', url: 'https://hr.hrbmu.edu.cn/recruitment/', isListing: true, allowedHosts: ['hr.hrbmu.edu.cn'] };
+  const articleUrl = 'https://hr.hrbmu.edu.cn/info/1117/1737.htm';
+  const attachmentPath = '/system/_content/download.jsp?urltype=news.DownloadAttachUrl&owner=1711051748&wbfileid=17826929';
+  const attachmentUrl = new URL(attachmentPath, university.url).href;
+  const article = `<html><h1>哈尔滨医科大学2027年毕业生招聘公告</h1><article>发布日期：2026-10-01。<a href="${attachmentPath}">附件1：哈尔滨医科大学2027年毕业生需求情况表.xlsx</a><a href="https://other.example/download.jsp">未知来源.xlsx</a><a href="http://hr.hrbmu.edu.cn/download.jsp">不安全下载.xlsx</a></article></html>`;
+  const parsed = pageData(article, articleUrl, university);
+  assert.deepEqual(parsed.attachments.map(item => [item.url, item.format]), [[attachmentUrl, 'xlsx']]);
+  const book = new ExcelJS.Workbook();
+  book.addWorksheet('需求表').addRows([
+    ['岗位代码', '岗位名称', '学历', '专业', '条件'],
+    ['CT2027', '放射科医师', '硕士', '影像医学与核医学', '2027届，CT方向'],
+  ]);
+  const workbook = Buffer.from(await book.xlsx.writeBuffer());
+  const responses = new Map([
+    [university.url, { bytes: Buffer.from(`<html><body><a href="${articleUrl}">哈尔滨医科大学2027年毕业生招聘公告</a></body></html>`), type: 'text/html;charset=utf-8' }],
+    [articleUrl, { bytes: Buffer.from(article), type: 'text/html;charset=utf-8' }],
+    [attachmentUrl, { bytes: workbook, type: 'application/octet-stream' }],
+  ]);
+  const requested = [];
+  const request = async (url, hosts) => {
+    requested.push(url);
+    assert.deepEqual(hosts, university.allowedHosts);
+    assert.ok(responses.has(url), `未配置的测试页面：${url}`);
+    return { ...responses.get(url), url };
+  };
+  const result = await collectSource(university, config, '2026-10-10', { request, pause: async () => {} });
+  assert.deepEqual(requested, [university.url, articleUrl, attachmentUrl]);
+  assert.equal(result.coverage.ok, true);
+  assert.deepEqual(result.coverage.warnings, []);
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].title, '放射科医师');
+  assert.equal(result.jobs[0].status, 'priority');
+  assert.equal(result.jobs[0].url, articleUrl);
+});
+
+test('下载验证页会明确报告而不覆盖旧岗位', async () => {
+  const attachmentUrl = 'https://hospital.example/download.xlsx';
+  const html = deadline => `<html><h1>2027届招聘公告</h1><article>发布日期：2026-10-01。网上报名 时间：2026年10月1日--${deadline}；<a href="${attachmentUrl}">岗位表.xlsx</a></article></html>`;
+  const requested = [];
+  const deadline = '2026年10月30日';
+  const request = async url => {
+    requested.push(url);
+    const text = url === source.url ? `<html><a href="${page.url}">2027届招聘公告</a></html>`
+      : url === page.url ? html(deadline)
+        : '<html><title>附件下载</title><body>请输入验证码</body></html>';
+    return { bytes: Buffer.from(text), url, type: 'text/html;charset=utf-8' };
+  };
+  const active = await collectSource(source, config, '2026-10-19', { request, pause: async () => {} });
+  assert.equal(requested.at(-1), attachmentUrl);
+  assert.equal(active.jobs.length, 0);
+  assert.deepEqual(active.observedPages, []);
+  assert.ok(active.coverage.warnings.some(warning => /下载验证页/.test(warning)));
 });
 
 test('重定向不能跳出来源白名单，限制响应大小', async () => {
