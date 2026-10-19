@@ -1,0 +1,24 @@
+{
+  "profile": {
+    "graduationYear": 2027,
+    "degree": "硕士",
+    "specialty": "医学影像学",
+    "focus": "CT",
+    "residencyCompleted": true,
+    "physicianQualification": true,
+    "preferredProvince": "黑龙江"
+  },
+  "maxPhysicians": 5,
+  "maxTechnicians": 2,
+  "maxReminders": 3,
+  "reminderDays": 3,
+  "lookbackDays": 90,
+  "sources": [
+    { "id": "hmu", "name": "哈尔滨医科大学", "province": "黑龙江", "url": "https://www.hmu.edu.cn/" },
+    { "id": "hmu1", "name": "哈尔滨医科大学附属第一医院", "province": "黑龙江", "url": "https://www.54dr.com/" },
+    { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmu2.com/" },
+    { "id": "hlj-health", "name": "黑龙江省卫生健康委员会", "province": "黑龙江", "url": "https://wsjkw.hlj.gov.cn/" },
+    { "id": "cmu1", "name": "中国医科大学附属第一医院", "province": "辽宁", "url": "https://www.zgyy.cc/" },
+    { "id": "pumch", "name": "北京协和医院", "province": "北京", "url": "https://www.pumch.cn/" }
+  ]
+}

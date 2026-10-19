@@ -5,9 +5,7 @@ name: weixin-push-on-time
 
 on:
   workflow_dispatch:
-  schedule:
-    # 每天国际时间 23:30 运行, 即北京时间 7:30 运行
-    - cron: '30 23 * * *'
+  # 旧版生活内容保留手动运行；每日推送改由招聘工作流负责。
     
 jobs:
   build:
@@ -21,12 +19,12 @@ jobs:
 
     steps:
     # 添加定时任务指定运行分支 默认为master
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
       with:
           ref: 'master'
           
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
