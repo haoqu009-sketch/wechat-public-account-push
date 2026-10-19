@@ -7,16 +7,40 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 export async function download(url, hosts, fetcher = fetch, limit = 5_000_000) {
   let current = safeUrl(url, url, hosts);
   if (!current) throw new Error('链接不在配置的HTTPS来源范围内');
+  const transient = new Set(['ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'TimeoutError']);
+  let retried = false;
   for (let redirects = 0; redirects <= 4; redirects++) {
-    let response;
-    try {
-      response = await fetcher(current, {
-        redirect: 'manual', signal: AbortSignal.timeout(20_000),
-        headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/json,application/octet-stream;q=0.8,*/*;q=0.5' },
-      });
-    } catch (error) {
-      const code = error.cause?.code || error.code || error.name;
-      throw new Error(`来源连接失败（${String(code || 'NETWORK_ERROR').replace(/[^\w-]/g, '')}）`);
+    let response, bytes;
+    while (true) {
+      try {
+        response = await fetcher(current, {
+          method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(20_000),
+          headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/json,application/octet-stream;q=0.8,*/*;q=0.5' },
+        });
+        // HTTP failures and redirects are handled below; only a transport failure retries.
+        if (!response.ok) break;
+        const chunks = [];
+        let length = 0;
+        for await (const chunk of response.body) {
+          length += chunk.length;
+          if (length > limit) throw Object.assign(new Error('页面或附件超过大小上限'), { code: 'DOWNLOAD_TOO_LARGE' });
+          chunks.push(chunk);
+        }
+        bytes = Buffer.concat(chunks);
+        break;
+      } catch (error) {
+        try { await response?.body?.cancel(); } catch { /* The failed stream may already be closed or locked. */ }
+        const code = error.cause?.code || error.code || error.name;
+        if (code === 'DOWNLOAD_TOO_LARGE') throw new Error('页面或附件超过大小上限');
+        if (!retried && transient.has(code)) {
+          retried = true;
+          await wait(500);
+          response = undefined;
+          continue;
+        }
+        const safeCode = /^(?:[A-Z][A-Z0-9_]{0,63}|TimeoutError|AbortError|TypeError|Error)$/.test(String(code)) ? code : 'NETWORK_ERROR';
+        throw new Error(`来源连接失败（${safeCode}）`);
+      }
     }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const next = safeUrl(response.headers.get('location'), current, hosts);
@@ -26,14 +50,7 @@ export async function download(url, hosts, fetcher = fetch, limit = 5_000_000) {
       continue;
     }
     if (!response.ok) { await response.body?.cancel(); throw new Error(`HTTP ${response.status}`); }
-    const chunks = [];
-    let length = 0;
-    for await (const chunk of response.body) {
-      length += chunk.length;
-      if (length > limit) throw new Error('页面或附件超过大小上限');
-      chunks.push(chunk);
-    }
-    return { bytes: Buffer.concat(chunks), url: current, type: response.headers.get('content-type') || '' };
+    return { bytes, url: current, type: response.headers.get('content-type') || '' };
   }
   throw new Error('重定向次数过多');
 }

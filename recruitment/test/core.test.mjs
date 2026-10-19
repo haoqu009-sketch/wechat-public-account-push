@@ -209,6 +209,63 @@ test('受限下载明确接收JSON，兼容官网公开接口的内容协商', a
   assert.deepEqual(JSON.parse(result.bytes.toString('utf8')), { code: 200 });
 });
 
+test('公开GET首次暂时超时后仅重试一次即可恢复，保留UA及JSON协商', async () => {
+  let calls = 0;
+  const result = await download(source.url, ['hospital.example'], async (url, options) => {
+    calls++;
+    assert.equal(options.method, 'GET');
+    assert.equal(options.headers['User-Agent'], 'MedicalImagingRecruitmentDigest/1.0');
+    assert.match(options.headers.Accept, /application\/json/);
+    if (calls === 1) throw Object.assign(new Error('secret-url https://hospital.example/?token=private'), { name: 'TimeoutError' });
+    return Response.json({ code: 200 });
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(JSON.parse(result.bytes.toString('utf8')), { code: 200 });
+});
+
+test('暂时性网络错误连续失败两次即停止，安全错误不含URL或token', async () => {
+  let calls = 0;
+  await assert.rejects(download(source.url, ['hospital.example'], async () => {
+    calls++;
+    throw Object.assign(new Error('https://hospital.example/?token=private'), { cause: { code: 'ETIMEDOUT' } });
+  }), error => {
+    assert.equal(error.message, '来源连接失败（ETIMEDOUT）');
+    assert.doesNotMatch(error.message, /hospital|https|private|token/);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test('403/404/406属于HTTP错误，不触发网络重试', async () => {
+  for (const status of [403, 404, 406]) {
+    let calls = 0;
+    await assert.rejects(download(source.url, ['hospital.example'], async () => {
+      calls++;
+      return new Response('Forbidden', { status });
+    }), new RegExp(`HTTP ${status}`));
+    assert.equal(calls, 1);
+  }
+});
+
+test('响应流连接重置可有界恢复，TLS错误不会触发重试', async () => {
+  let calls = 0;
+  const result = await download(source.url, ['hospital.example'], async () => {
+    calls++;
+    if (calls === 1) return new Response(new ReadableStream({ start(controller) {
+      controller.error(Object.assign(new Error('https://hospital.example/private'), { code: 'UND_ERR_SOCKET' }));
+    } }));
+    return new Response('restored');
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.bytes.toString('utf8'), 'restored');
+  let tlsCalls = 0;
+  await assert.rejects(download(source.url, ['hospital.example'], async () => {
+    tlsCalls++;
+    throw Object.assign(new Error('certificate failure'), { code: 'ERR_TLS_CERT_ALTNAME_INVALID' });
+  }), /ERR_TLS_CERT_ALTNAME_INVALID/);
+  assert.equal(tlsCalls, 1);
+});
+
 test('重定向不能跳出来源白名单，限制响应大小', async () => {
   await assert.rejects(download(source.url, ['hospital.example'], async () => new Response(null, { status: 302, headers: { location: 'https://evil.example/' } })), /未配置/);
   await assert.rejects(download(source.url, ['hospital.example'], async () => new Response('12345'), 3), /大小/);
