@@ -51,6 +51,44 @@ test('统一学历仅继承明确聘用条件，报名材料中的学位或别�
   assert.equal(commonConditions({ text: '报名材料：硕士学位证书、身份证复印件', title: '招聘' }, config.profile).degree, '');
 });
 
+test('黑龙江人才周真实条款：招聘条件中带学历层级的应届届别与倒装取证期限可继承', () => {
+  const document = { ...page, title: '2026年度人才周公开招聘公告', commonText:
+    '拟面向2027年应届毕业生公开招聘工作人员。一、单位简介。二、招聘计划。三、招聘条件：（五）应聘人员须为2027年应届硕士研究生及以上学历毕业生，毕业证、学位证和岗位要求各类证书须于2027年8月31日前取得。（六）年龄38周岁以下。四、招聘程序。报名时间：2026年9月15日至2026年10月26日。' };
+  const job = make(row, document), result = evaluateOfficialJob(job, document, config.profile, '2026-10-20');
+  assert.equal(job.qualificationEvidence.graduationYear, 2027);
+  assert.equal(commonConditions(document, config.profile).certificateDeadline.date, '2027-08-31');
+  assert.match(result.evidence.find(item => item.field === 'cohort').quote, /须为2027年应届硕士/);
+  assert.equal(result.evidence.find(item => item.field === 'cohort').url, document.url);
+  assert.ok(!result.issues.some(item => /2027届是否可报/.test(item)));
+});
+
+test('学历插入届别仍保留否定、博士专用、行级旧届别及统一条件冲突的边界', () => {
+  const document = text => ({ ...page, title: '2027年度公开招聘公告', commonText: text });
+  for (const rule of ['应聘人员须为2026年应届硕士研究生毕业生', '应聘人员不接受2027年应届硕士研究生毕业生', '应聘人员须为2027年应届博士研究生毕业生', '部分岗位面向2027年应届硕士研究生毕业生']) {
+    assert.equal(make(row, document(`三、招聘条件：${rule}。四、报名办法。`)).qualificationEvidence.graduationYear, null, rule);
+  }
+  const allowed = document('三、招聘条件：应聘人员须为2027年应届硕士研究生及以上学历毕业生。四、报名办法。');
+  assert.equal(make(row + '；届别：2026届', allowed).qualificationEvidence.graduationYear, null);
+  assert.equal(make(row, document('拟面向2027年应届毕业生招聘。一、招聘条件：应聘人员须为2026年应届硕士研究生毕业生。二、报名办法。')).qualificationEvidence.graduationYear, null);
+});
+
+test('冗长站点导航不遮住届别证据；材料免交条款不冒充届别许可', () => {
+  const document = { ...page, title: '2026年度人才周公告', commonText: '医院导航 '.repeat(240) + '拟面向2027年应届毕业生招聘。一、招聘计划。' };
+  const job = make(row, document);
+  assert.equal(job.qualificationEvidence.graduationYear, 2027);
+  assert.match(job.commonEvidence.cohort.quote, /2027年应届毕业生/);
+  const noPermission = { ...document, commonText: '各岗位要求见表，没有统一届别说明。' };
+  const exempt = make(row + '；其他条件：具有执业医师资格证书（2025年至2027年应届毕业生无需提供）。', noPermission);
+  assert.equal(exempt.qualificationEvidence.graduationYear, null);
+});
+
+test('吉林真实在读排除句式及带排版空格的取证年份仍保留明确冲突', () => {
+  const document = { ...page, title: '2026年社会招聘公告', commonText: '在读的非2026年毕业生（2027年1月1日后取得毕业证、学位证的考生不视为2026年毕业生），不得用已取得的学历、学位报考。应聘人员毕业证、学位证应于202 6年12月31日前取得。' };
+  const result = evaluateOfficialJob(make(row, document), document, config.profile, today);
+  assert.equal(result.state, 'mismatch'); assert.match(result.issues.join('；'), /在读非2026届/);
+  assert.equal(commonConditions(document, config.profile).certificateDeadline.date, '2026-12-31');
+});
+
 test('已毕业要求与2027届冲突给出具体证据，不把应往届误解为未毕业也能报', () => {
   const document = { ...page, title: '2026年招聘公告', text: '招聘对象：普通高等院校2026年应届毕业生和社会人员。报考人员须于2026年10月15日前取得相应毕业证书、学位证书。' };
   const result = evaluateOfficialJob(make(row, document), document, config.profile, today);
@@ -94,6 +132,12 @@ test('聚合线索自动追溯原文，定位岗位并升级证据；已发ID和
   assert.equal(result.role, 'physician'); assert.equal(result.url, source.url);
   assert.equal(result.id, original.id); assert.equal(result.fingerprint, original.fingerprint);
   assert.equal(planDigest(results, { sent: { [original.id]: { fingerprint: original.fingerprint } }, reminded: {} }, config, today).physicians.length, 0);
+});
+
+test('同一医院主机同时列在全国转载目录和医院官网时，仍采用原始雇主身份核验', async () => {
+  const settings = { ...config, sources: [{ ...source, id: 'publisher', name: '官方转发平台', sourceKind: 'official-publisher', isRepost: true }, source, platform] };
+  const [result] = await verifyJobs([make()], settings, today, { request: async url => response(url, html) });
+  assert.equal(result.verification.state, 'matched'); assert.equal(result.isRepost, false);
 });
 
 test('配置过的来源定位仍需检查单位和公告年份，不能把别家或去年公告变成核验证据', async () => {

@@ -10,7 +10,7 @@ export const chinaDate = (now = new Date()) => new Intl.DateTimeFormat('en-CA', 
 const dayNumber = value => Date.parse(`${value}T00:00:00+08:00`) / 86400000;
 export const daysBetween = (a, b) => Math.round(dayNumber(a) - dayNumber(b));
 export const imaging = /医学影像|影像医学|放射(?:科|诊断|影像)|影像(?:科|中心|诊断|医师|技师)|\b(?:CT|MRI|MR)\b|磁共振|核磁|超声|B超/i;
-const recruitment = /招聘|招录|人才引进|诚聘|招贤/;
+const recruitment = /招聘|招录|人才引进|校园引才|人才周|诚聘|招贤/;
 const procedural = /拟聘|拟录|公示|面试(?:名单|成绩|通知)|笔试(?:成绩|通知)|体检|递补|资格(?:复审|审查结果)|考试\s*(?:的\s*)?通知$/;
 const genericHeading = value => /^(?:新闻中心|院务公开|医院新闻|医院公告|信息公开|人才招聘|校园招聘|招聘信息|招聘公告|通知公告)(?:\s*[-_｜|].*)?$/.test(clean(value));
 

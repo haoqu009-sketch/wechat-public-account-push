@@ -323,6 +323,20 @@ test('403/404/406属于HTTP错误，不触发网络重试', async () => {
   }
 });
 
+test('502/503/504网关临时故障仅重试一次，连续失败仍报错，429绝不重试', async () => {
+  for (const status of [502, 503, 504]) {
+    let calls = 0;
+    const result = await download(source.url, ['hospital.example'], async () => ++calls === 1 ? new Response('', { status }) : new Response('restored'));
+    assert.equal(calls, 2); assert.equal(result.bytes.toString(), 'restored');
+  }
+  let failures = 0;
+  await assert.rejects(download(source.url, ['hospital.example'], async () => { failures++; return new Response('', { status: 502 }); }), /HTTP 502/);
+  assert.equal(failures, 2);
+  let denied = 0;
+  await assert.rejects(download(source.url, ['hospital.example'], async () => { denied++; return new Response('', { status: 429 }); }), /HTTP 429/);
+  assert.equal(denied, 1);
+});
+
 test('响应流连接重置可有界恢复，TLS错误不会触发重试', async () => {
   let calls = 0;
   const result = await download(source.url, ['hospital.example'], async () => {

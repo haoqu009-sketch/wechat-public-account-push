@@ -194,7 +194,7 @@ export async function verifyJobs(jobs, config, today, options = {}) {
   for (const [index, job] of jobs.entries()) {
     if (index >= (settings.maxJobs || 60)) { output.push({ ...job, verification: { version: 1, checkedAt, state: 'blocked', summary: '本轮核验数量达到上限，尚未处理', officialUrl: null, issues: ['排队等待下一轮，不能视为已核验'], evidence: [], attempts: [] } }); continue; }
     const attempts = [], candidates = [], proofs = [], attachments = [];
-    const authorityFor = url => { try { const host = new URL(url).hostname; return authorities.find(item => item.hosts.includes(host)); } catch { return null; } };
+    const authorityFor = url => { try { const host = new URL(url).hostname; return authorities.find(item => item.original && item.hosts.includes(host)) || authorities.find(item => item.hosts.includes(host)); } catch { return null; } };
     const own = authorityFor(job.url);
     if (own?.original) candidates.push(job.url);
     const references = (settings.references || []).filter(reference => reference.from === job.url);

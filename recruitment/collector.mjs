@@ -3,6 +3,8 @@ import { collectPumchSource } from './pumch.mjs';
 import { collectDiscovery } from './discovery.mjs';
 import { processAttachments } from './attachment-pipeline.mjs';
 import { cachedDownload } from './source-cache.mjs';
+import { robotsAllowed } from './discovery.mjs';
+import { directoryNotices, selectDirectoryNotices } from './official-directory.mjs';
 export { spreadsheetRows } from './attachments.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -20,7 +22,11 @@ export async function download(url, hosts, fetcher = fetch, limit = 5_000_000) {
           method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(20_000),
           headers: { 'User-Agent': 'MedicalImagingRecruitmentDigest/1.0', Accept: 'text/html,application/xhtml+xml,application/json,application/octet-stream;q=0.8,*/*;q=0.5' },
         });
-        // HTTP failures and redirects are handled below; only a transport failure retries.
+        // A single retry for gateway/service outages; never retry an access denial.
+        if ([502, 503, 504].includes(response.status) && !retried) {
+          retried = true; await response.body?.cancel(); await wait(500); continue;
+        }
+        // Other HTTP failures and redirects are handled below.
         if (!response.ok) break;
         const chunks = [];
         let length = 0;
@@ -66,25 +72,46 @@ export function decodeHtml(bytes, contentType = '') {
 }
 
 export async function collectSource(source, config, today, options = {}) {
-  const request = options.request || download;
+  let request = options.request || download;
   if (source.type === 'discovery') return collectDiscovery(source, config, today, { ...options, request });
   if (source.type === 'pumch-api') return collectPumchSource(source, config, today, { ...options, request });
   const pause = options.pause || wait;
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
+  const directory = source.type === 'official-directory';
+  if (directory) {
+    const originalRequest = request, rules = new Map(), blocked = new Set();
+    request = async (url, allowed) => {
+      const host = new URL(url).hostname;
+      if (!safeUrl(url, url, allowed)) throw new Error('目录链接不在批准HTTPS范围内');
+      if (blocked.has(host)) throw new Error('该来源本轮已返回403/429，停止后续请求');
+      if (!rules.has(host)) {
+        let text = '';
+        try { const response = await originalRequest(new URL('/robots.txt', url).href, allowed); text = decodeHtml(response.bytes, response.type); }
+        catch (error) { if (/HTTP (403|429)/.test(error.message)) blocked.add(host); if (!/HTTP 404/.test(error.message)) throw error; }
+        rules.set(host, text);
+      }
+      if (!robotsAllowed(rules.get(host), url)) throw new Error('robots不允许读取此目录或公告');
+      try { return await originalRequest(url, allowed); }
+      catch (error) { if (/HTTP (403|429)/.test(error.message)) blocked.add(host); throw error; }
+    };
+  }
   const coverage = { name: source.name, ok: false, articles: 0, warnings: [], attachments: [] };
   const attachmentBudget = { remaining: 24 };
   const jobs = [];
   const observedPages = [];
   const visited = new Set();
   const articles = new Map();
-  const indexes = [source.url];
+  const indexes = [...new Set([source.url, ...(directory ? source.entryUrls || [] : [])])]
+    .filter(url => safeUrl(url, source.url, hosts)).slice(0, 4);
   let discoveredIndex = Boolean(source.isListing);
+  let readableIndexes = 0;
   try {
     // Bounded discovery: home page and up to three recruitment listing pages.
     for (let i = 0; i < indexes.length && i < 4; i++) {
       const url = indexes[i];
       if (visited.has(url)) continue;
       visited.add(url);
+      try {
       const response = await request(url, hosts);
       const html = decodeHtml(response.bytes, response.type);
       if (!/<(?:html|a|body)\b/i.test(html)) throw new Error('来源返回的不是可解析网页');
@@ -96,16 +123,24 @@ export async function collectSource(source, config, today, options = {}) {
       const next = source.isListing && links.find(link => /^(?:下一页|下页|Next)(?:\s*[>›»])?$/i.test(link.title)
         && new URL(link.url).hostname === new URL(response.url).hostname);
       if (next && !indexes.includes(next.url) && indexes.length < 4) indexes.push(next.url);
+      if (directory) for (const link of directoryNotices(html, response.url, hosts)) articles.set(link.url, link);
       for (const link of links) {
         const kind = classifyLink(link);
-        if (kind === 'article') articles.set(link.url, link);
-        if (kind === 'index' && !indexes.includes(link.url) && indexes.length < 4) { indexes.push(link.url); discoveredIndex = true; }
+        if (!directory && kind === 'article') articles.set(link.url, link);
+        if (!directory && kind === 'index' && !indexes.includes(link.url) && indexes.length < 4) { indexes.push(link.url); discoveredIndex = true; }
+      }
+      readableIndexes++;
+      } catch (error) {
+        if (!directory) throw error;
+        coverage.warnings.push(`有目录入口读取失败：${error.message}`);
       }
       await pause(400);
     }
+    if (directory && !readableIndexes) throw new Error(coverage.warnings[0] || '官方目录没有读取成功的入口');
     if (!discoveredIndex && !articles.size) throw new Error('未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染');
     let attempted = 0;
-    const articleLinks = [...articles.values()].slice(0, 12);
+    const articleLinks = directory ? selectDirectoryNotices([...articles.values()], today, options.now ?? Date.now()) : [...articles.values()].slice(0, 12);
+    if (directory && articles.size > articleLinks.length) coverage.warnings.push(`目录发现${articles.size}篇招聘公告，本轮按相关度及轮转读取${articleLinks.length}篇，未宣称全量覆盖`);
     const articleOffset = articleLinks.length ? (Math.floor(Date.now() / 14_400_000) * 3) % articleLinks.length : 0;
     // Rotate attachment-budget ownership across notices, not only within a notice.
     for (const link of articleLinks.slice(articleOffset).concat(articleLinks.slice(0, articleOffset))) {
