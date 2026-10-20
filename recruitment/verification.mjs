@@ -7,6 +7,7 @@ const unique = values => [...new Set(values.filter(Boolean))];
 const normal = value => clean(value).replace(/\s|[｜|（）()、，,；;：:]/g, '');
 const position = value => normal(value).replace(/医学影像|放射医学影像|放射影像/g, '影像').replace(/(?:科|中心|岗位|工作人员|医技医辅系统各科室|如)/g, '').replace(/医生/g, '医师');
 const unsupported = /^(?:localhost|.*\.localhost)$|^\d+\.|:/;
+const requiresMasters = requirement => /硕士|研究生/.test(requirement || '') && !/本科|学士|大专|专科/.test(requirement || '');
 
 export function verificationAuthorities(config) {
   const authorities = (config.sources || []).filter(source => source.sourceKind !== 'aggregator' && source.type !== 'discovery')
@@ -120,7 +121,10 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   const certificateDeadline = rowCertificateDate ? { date: rowCertificateDate, quote: rowCertificate } : common.certificateDeadline;
   if (certificateDeadline) {
     add('graduationDeadline', `取得学历学位的期限：${certificateDeadline.date}`, certificateDeadline.quote, rowCertificateDate ? locator : '公告统一条件', rowCertificateDate ? rowUrl : page.url);
-    if (Number(certificateDeadline.date.slice(0, 4)) < profile.graduationYear) mismatches.push(`岗位要求${certificateDeadline.date}前取得学历学位，与${profile.graduationYear}届尚未毕业的情况冲突`);
+    if (Number(certificateDeadline.date.slice(0, 4)) < profile.graduationYear) {
+      if (requiresMasters(job.degreeRequirement)) mismatches.push(`岗位要求${certificateDeadline.date}前取得硕士等报考学历学位，与${profile.graduationYear}届硕士尚未毕业的情况冲突`);
+      else issues.push('学历取得期限早于硕士毕业；是否可用已取得的本科等学历报考，以及在读限制，仍需核对');
+    }
   }
   if (common.studentExclusion && common.studentExclusion.year < profile.graduationYear) {
     const reason = `原文不接收在读非${common.studentExclusion.year}届毕业生，与${profile.graduationYear}届在读情况冲突`;
@@ -232,7 +236,7 @@ export async function verifyJobs(jobs, config, today, options = {}) {
         const current = match.job;
         const general = commonConditions(page, config.profile);
         if (!current) {
-          const deadlineConflict = general.certificateDeadline && Number(general.certificateDeadline.date.slice(0, 4)) < config.profile.graduationYear;
+          const deadlineConflict = general.certificateDeadline && requiresMasters(job.degreeRequirement) && Number(general.certificateDeadline.date.slice(0, 4)) < config.profile.graduationYear;
           const studentConflict = general.studentExclusion && general.studentExclusion.year < config.profile.graduationYear;
           const mismatch = deadlineConflict || studentConflict;
           const reason = deadlineConflict ? `公告要求${general.certificateDeadline.date}前取得毕业证，与${config.profile.graduationYear}届尚未毕业冲突`

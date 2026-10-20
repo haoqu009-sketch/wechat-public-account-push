@@ -231,3 +231,11 @@ test('年龄放宽条款不替代基础年龄，公告统一年龄证据链接�
   assert.match(proof.value, /符合/); assert.ok(!proof.quote.includes('放宽')); assert.equal(proof.url, document.url);
   assert.ok(!result.issues.some(issue => /生日/.test(issue)));
 });
+
+test('本科层级岗位不能仅因硕士尚未毕业就直接判不匹配，需核对既有学历和在读限制', () => {
+  const document = { ...page, title: '招聘公告', text: '报考人员须于2026年10月15日前取得相应毕业证书。' };
+  const job = make(row.replace('硕士研究生以上', '本科及以上'), document);
+  const result = evaluateOfficialJob(job, document, config.profile, today);
+  assert.equal(result.state, 'partial');
+  assert.match(result.issues.join('；'), /已取得的本科/);
+});
