@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collect } from './collector.mjs';
+import { collect, download } from './collector.mjs';
+import { cachedDownload } from './source-cache.mjs';
+import { verifyJobs } from './verification.mjs';
+import { resolveProfile } from './profile.mjs';
 import { chinaDate, daysBetween, planDigest, rankJobs, markDelivered, renderMarkdown } from './core.mjs';
 import { readWechatConfig, recipientKey, getAccessToken, sendDigest } from './wechat.mjs';
 import { createPublicReport } from './public-report.mjs';
@@ -32,6 +35,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   const refreshOnly = args.includes('--refresh-only');
   if ([dryRun, collectOnly, sendOnly, refreshOnly].filter(Boolean).length > 1) throw new Error('采集预览、网页刷新和发送阶段不能同时选择');
   const config = JSON.parse(await fs.readFile(env.RECRUITMENT_CONFIG || path.join(directory, 'config.json'), 'utf8'));
+  config.profile = resolveProfile(config.profile, env.RECRUITMENT_PROFILE_JSON);
   const stateDir = env.RECRUITMENT_STATE_DIR || path.join(directory, '../.recruitment-state');
   const reportDir = env.RECRUITMENT_REPORT_DIR || path.join(stateDir, 'reports');
   const stateFile = path.join(stateDir, 'state.json');
@@ -47,7 +51,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
       onSourceComplete: result => console.log(`来源检查 ${result.completed}/${result.total}：${result.name}（${result.ok ? '已读取' : '未完成'}，影像线索${result.jobCount}条）`),
     });
     const refreshed = new Set(observedPages);
-    for (const [id, job] of Object.entries(state.jobs)) if (refreshed.has(job.url)) delete state.jobs[id];
+    for (const [id, job] of Object.entries(state.jobs)) if (refreshed.has(job.discoveryUrl || job.url)) delete state.jobs[id];
     for (const job of jobs) state.jobs[job.id] = { ...job, collectedAt: today };
     // Retain recent observations during a source outage, but label their actual collection date.
     for (const [id, job] of Object.entries(state.jobs)) {
@@ -55,7 +59,14 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
       if (job.collectedAt && daysBetween(today, job.collectedAt) > config.lookbackDays) delete state.jobs[id];
       else if (job.published && daysBetween(today, job.published) > config.lookbackDays && !stillOpen) delete state.jobs[id];
     }
-    const available = Object.values(state.jobs);
+    let available = Object.values(state.jobs);
+    if (config.verification?.enabled && (!services.collect || services.verifyJobs)) {
+      available = await (services.verifyJobs || verifyJobs)(available, config, today, {
+        request: dryRun ? download : cachedDownload(path.join(stateDir, 'source-cache'), download),
+        onProgress: result => console.log(`岗位核验 ${result.completed}/${result.total}：${result.state}`),
+      });
+      for (const job of available) state.jobs[job.id] = job;
+    }
     const targets = dryRun || refreshOnly ? [{ key: 'preview' }] : wechat.users.map(user => ({ key: recipientKey(user) }));
     const digests = Object.fromEntries(targets.map(({ key }) => [key, planDigest(available, state.recipients[key] || { sent: {}, reminded: {} }, config, today)]));
     // The shared report covers the union of all recipients' unsent jobs and reminders.

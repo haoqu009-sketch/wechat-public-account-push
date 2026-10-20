@@ -55,3 +55,23 @@ test('旧快照没有leads仍能显示，坏数据进入明确失败态', async 
   assert.match(broken.document.getElementById('empty-title').textContent, /无法读取/);
   assert.equal(broken.document.querySelectorAll('#jobs .job-card').length, 0);
 });
+
+test('核验结论、剩余问题和原文证据直接可读，证据文字不能注入HTML', async t => {
+  const data = report();
+  data.jobs[0].verification = {
+    version: 1, checkedAt: data.generatedAt, state: 'partial', summary: '已核对原文，剩余1项具体问题', officialUrl: job.url,
+    issues: ['个人专业代码尚未提供，需确认归属'],
+    evidence: [{ field: 'application', value: '招满即止；不代表仍有空缺', quote: '<img src=x onerror=alert(1)>自公告发布起接受报名，招满即止。', url: job.url, locator: '公告报名安排' }],
+    attempts: [{ url: job.url, result: 'read', reason: '已定位具体岗位行' }],
+  };
+  const window = await page(t, data), document = window.document;
+  assert.match(document.querySelector('.verification-summary').textContent, /剩余1项/);
+  assert.match(document.querySelector('.verification-issues').textContent, /专业代码/);
+  assert.equal(document.querySelector('.deadline-value').textContent, '招满即止');
+  assert.match(document.querySelector('.verification-evidence').textContent, /自公告发布/);
+  assert.match(document.querySelector('.verification-attempts').textContent, /已定位/);
+  assert.match(document.querySelector('.official-link').textContent, /核验原文/);
+  assert.equal(document.querySelectorAll('#jobs img').length, 0);
+  assert.equal(document.querySelectorAll('#jobs .quality-reasons').length, 0);
+  assert.ok(!document.querySelector('.detail-body').textContent.includes('尚待核对'));
+});

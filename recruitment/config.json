@@ -13,6 +13,36 @@
   "maxReminders": 3,
   "reminderDays": 3,
   "lookbackDays": 90,
+  "verification": {
+    "enabled": true,
+    "maxJobs": 60,
+    "maxRequests": 60,
+    "authorities": [
+      { "name": "鸡西市人民政府", "province": "黑龙江", "hosts": ["www.jixi.gov.cn", "jixi.gov.cn"] },
+      { "name": "哈尔滨市人民政府", "province": "黑龙江", "hosts": ["www.harbin.gov.cn", "www.hrbyanshou.gov.cn"] },
+      { "name": "重庆市急救医疗中心", "province": "重庆", "hosts": ["120cq.my120.org", "120cq-m.my120.org"] },
+      { "name": "邛崃市人民政府", "province": "四川", "hosts": ["www.qionglai.gov.cn"] },
+      { "name": "英德市人民政府", "province": "广东", "hosts": ["www.yingde.gov.cn"] },
+      { "name": "赤峰市人力资源和社会保障局", "province": "内蒙古", "hosts": ["rsj.chifeng.gov.cn"] },
+      { "name": "随州市中心医院", "province": "湖北", "hosts": ["www.szch.cn"] },
+      { "name": "南京市人力资源和社会保障局", "province": "江苏", "hosts": ["rsj.nanjing.gov.cn", "wjw.nanjing.gov.cn"] },
+      { "name": "首都医科大学附属北京安贞医院南充医院", "province": "四川", "hosts": ["sdykdxfsbjazyyncyy.nc120.cn"] },
+      { "name": "吉林大学第一医院", "province": "吉林", "employerAliases": ["吉林大学白求恩第一医院", "吉林大学第一医院"], "hosts": ["www.jdyy.cn"] }
+    ],
+    "references": [
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/431531.html", "url": "https://www.jixi.gov.cn/jixi/c100007/202609/c06_374227.shtml" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/437560.html", "url": "https://www.harbin.gov.cn/haerbin/c107195/202609/c01_1144155.shtml" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/438123.html", "url": "https://120cq.my120.org/rsrc_ryzl/2026/nelOgVdK.html" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/437974.html", "url": "https://www.qionglai.gov.cn/qlsgzxxw/c151003/2026-10/14/content_9fcfebb076cb4439914818fbabb82071.shtml" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/436892.html", "url": "https://www.yingde.gov.cn/zwgk/tzgg/content/post_2197234.html" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/436722.html", "url": "https://www.yingde.gov.cn/zwgk/zwdt/bmdt/content/post_2196851.html" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/431928.html", "url": "https://rsj.chifeng.gov.cn/zzllms/zzllmstzgg/202609/t20260915_2817834.html" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/434411.html", "url": "https://www.szch.cn/news_dl/1939.html" },
+      { "from": "https://www.gaoxiaojob.com/announcement/detail/436610.html", "url": "https://rsj.nanjing.gov.cn/njsrlzyhshbzj/202610/t20261008_5921529.html" },
+      { "from": "https://jdjyw.jlu.edu.cn/portal/recruit/details?id=2f71a2152c8a4521be0b24477663213c", "url": "https://sdykdxfsbjazyyncyy.nc120.cn/nd.jsp?fromColId=288&id=7389" },
+      { "from": "https://www.jobmd.cn/jobnotice/87470", "url": "https://www.jdyy.cn/index.php?m=home&c=View&a=index&aid=87195" }
+    ]
+  },
   "sources": [
     { "id": "gaocai-discovery", "name": "高校人才网（聚合发现）", "province": "全国", "type": "discovery", "provider": "gaocai", "sourceKind": "aggregator", "isRepost": true, "url": "https://www.gaoxiaojob.com/hotword/giyk639104", "entryUrls": ["https://www.gaoxiaojob.com/hotword/giyk639104", "https://www.gaoxiaojob.com/hotword/ldhw497528", "https://www.gaoxiaojob.com/hotword/htkn079126"], "maxDetails": 16, "allowedHosts": ["www.gaoxiaojob.com"] },
     { "id": "jobmd-discovery", "name": "丁香人才（聚合发现）", "province": "全国", "type": "discovery", "provider": "jobmd", "sourceKind": "aggregator", "isRepost": true, "url": "https://www.jobmd.cn/jobnotice", "maxDetails": 16, "allowedHosts": ["www.jobmd.cn"] },

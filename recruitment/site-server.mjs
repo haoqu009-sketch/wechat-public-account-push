@@ -59,7 +59,7 @@ export function validatePublicReport(report) {
   if (report.leads !== undefined && (!Array.isArray(report.leads) || report.leads.length > 300)) invalid();
   const ids = new Set();
   for (const job of [...report.jobs, ...(report.leads || [])]) {
-    exactKeys(job, JOB_KEYS);
+    exactKeys(job, Object.hasOwn(job, 'verification') ? [...JOB_KEYS, 'verification'] : JOB_KEYS);
     string(job.id, 100, true);
     if (ids.has(job.id)) invalid();
     ids.add(job.id);
@@ -78,6 +78,25 @@ export function validatePublicReport(report) {
     for (const key of ['structured', 'sourceHealthy', 'stale', 'isNew', 'isReminder']) boolean(job[key]);
     publicUrl(job.url);
     for (const key of ['published', 'deadline', 'collectedAt']) nullableDate(job[key]);
+    if (job.verification !== undefined) {
+      const verification = job.verification;
+      exactKeys(verification, ['version', 'checkedAt', 'state', 'summary', 'officialUrl', 'issues', 'evidence', 'attempts']);
+      if (verification.version !== 1 || !['matched', 'partial', 'blocked', 'mismatch'].includes(verification.state)) invalid();
+      string(verification.checkedAt, 24, true);
+      if (!Number.isFinite(Date.parse(verification.checkedAt)) || new Date(verification.checkedAt).toISOString() !== verification.checkedAt) invalid();
+      string(verification.summary, 600, true); publicUrl(verification.officialUrl, true); stringList(verification.issues);
+      if (!Array.isArray(verification.evidence) || verification.evidence.length > 12 || !Array.isArray(verification.attempts) || verification.attempts.length > 8) invalid();
+      for (const item of verification.evidence) {
+        exactKeys(item, ['field', 'value', 'quote', 'url', 'locator']);
+        string(item.field, 40, true); string(item.value, 240, true); string(item.quote, 600, true); string(item.locator, 100, true); publicUrl(item.url);
+      }
+      for (const item of verification.attempts) {
+        exactKeys(item, ['url', 'result', 'reason']); publicUrl(item.url); string(item.reason, 240, true);
+        if (!['read', 'blocked', 'no_match', 'mismatch'].includes(item.result)) invalid();
+      }
+      if (verification.state === 'matched' && (!verification.officialUrl || verification.issues.length || !['cohort', 'degree', 'role', 'specialty', 'application'].every(field => verification.evidence.some(item => item.field === field)))) invalid();
+      if (['mismatch', 'blocked'].includes(verification.state) && !isLead) invalid();
+    }
   }
   const sourceIds = new Set();
   for (const source of report.sources) {

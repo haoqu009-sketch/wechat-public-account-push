@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { load } from 'cheerio';
+import { commonConditions, rowCohortConditions } from './conditions.mjs';
 
 export const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 export const hash = value => crypto.createHash('sha256').update(value).digest('hex').slice(0, 24);
@@ -48,6 +49,7 @@ export function classifyLink(link) {
 }
 
 export function datesIn(text, year) {
+  text = text.replace(/\b(20)\s*(\d)\s+(\d)(?=\s*年|[-./])/g, '$1$2$3').replace(/(\d)\s+(\d)(?=\s*日)/g, '$1$2');
   const result = [];
   const expression = /(?:(20\d{2})\s*[年./-]\s*)?(\d{1,2})\s*[月./-]\s*(\d{1,2})\s*日?/g;
   for (const match of text.matchAll(expression)) {
@@ -147,7 +149,9 @@ export function pageData(html, url, source) {
       || link.title.match(/\.(xlsx?|pdf|docx?|png|jpe?g)$/i)?.[1])?.toLowerCase();
     return format ? [{ ...link, format }] : [];
   });
-  return { title, text, published, rows, attachments, url };
+  const commonContent = content.clone();
+  commonContent.find('table').remove();
+  return { title, text, commonText: clean(commonContent.text()), published, rows, attachments, url };
 }
 
 function excerpt(text, pattern) {
@@ -189,6 +193,12 @@ function mastersConstraint(value) {
   return { allows: includesMasters, doctorateOnly };
 }
 
+function degreeConstraints(values) {
+  const hasMasters = values.some(value => mastersConstraint(value)?.allows);
+  return values.map(value => /(?:相应|相对应|对应).{0,6}学位/.test(value) && !/博士|学士|仅限/.test(value) && hasMasters
+    ? { allows: true, doctorateOnly: false } : mastersConstraint(value));
+}
+
 function negatesCohort(text, year) {
   const target = `${year}\\s*(?:届|年(?:应届)?毕业生)`;
   return new RegExp(`(?:不(?:接受|接收|招收|招录|招聘|招|含|包括)?|拒绝|排除|不面向|暂不(?:接受|接收|招收|招录|招)?)\\s*${target}|${target}(?:毕业生)?\\s*(?:不得|不可|不能|不予|不符合|不接收|不接受|不招收|暂不|除外)|除\\s*${target}(?:毕业生)?\\s*以?外`).test(text);
@@ -222,7 +232,7 @@ function fallbackDegree(fields) {
 function clinicalRole(text, title, structured) {
   const entries = rowFields(text);
   const values = pattern => entries.filter(([key]) => pattern.test(key)).map(([, value]) => value).join('；');
-  const position = values(/岗位名称|招聘岗位|职位名称|^岗位$|部门岗位/);
+  const position = values(/岗位名称|招聘岗位|职位名称|招聘职位.*职位$|^职位$|^岗位$|部门岗位/);
   const department = values(/科室|^部门$/);
   const type = values(/岗位类型|岗位类别|职位类别|招聘类别/);
   const doctor = /医师|医生/.test(position);
@@ -284,7 +294,7 @@ export function assessJobQuality(job, config, today = chinaDate()) {
   // This only removes confidence; it never invents new qualification evidence.
   const rowConditions = job.structured ? job.conditionExcerpt || '' : '';
   const degreeRequirement = job.degreeRequirement || fallbackDegree(rowFields(rowConditions));
-  const constraints = job.structured && degreeRequirement ? degreeRequirement.split('；').map(mastersConstraint) : [];
+  const constraints = job.structured && degreeRequirement ? degreeConstraints(degreeRequirement.split('；')) : [];
   const doctorateOnly = constraints.some(constraint => constraint?.doctorateOnly) || onlyDoctorate(rowConditions);
   const wrongCohort = negatesCohort(rowConditions, targetYear);
   const evidence = {
@@ -334,11 +344,12 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   if (!imaging.test(text)) return null;
   const structured = rowNumber > 0;
   const fields = rowFields(text);
-  const position = fields.filter(([key]) => /岗位名称|招聘岗位|职位名称|^岗位$|^科室$|招聘科室|部门/.test(key)).map(([, value]) => value).filter(Boolean).join('｜');
+  const position = fields.filter(([key]) => /岗位名称|招聘岗位|职位名称|招聘职位.*职位$|^职位$|^岗位$|^科室$|招聘科室|^部门$|用人部门|招聘部门/.test(key)).map(([, value]) => value).filter(Boolean).join('｜');
   const field = pattern => fields.filter(([key]) => pattern.test(key)).map(([, value]) => value).filter(Boolean).join('；');
   const degreeFallback = fallbackDegree(fields);
-  const degreeRequirement = field(/学历|学位/) || degreeFallback;
-  const employer = field(/招聘单位|单位名称|用人单位|^单位$|^医院$/);
+  const common = commonConditions(page, profile);
+  const degreeRequirement = field(/学历|学位/) || degreeFallback || common.degree;
+  const employer = field(/招聘单位|单位名称|用人单位|引进单位|引才单位|^单位$|^医院$/);
   const role = clinicalRole(text, page.title, structured);
   if (role === null) return null;
   const title = clean(position || excerpt(text, imaging)).slice(0, 100);
@@ -347,9 +358,9 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   // Education and degree are separate constraints. A broad education field cannot
   // override a doctorate-only degree field (or vice versa).
   const explicitDegrees = fields.filter(([key]) => /学历|学位/.test(key)).map(([, value]) => value);
-  const degreeConstraints = (explicitDegrees.length ? explicitDegrees : degreeFallback ? degreeFallback.split('；') : []).map(mastersConstraint);
-  const masters = structured && degreeConstraints.length > 0 && degreeConstraints.every(constraint => constraint?.allows === true) && !onlyDoctorate(conditions);
-  const doctorateOnly = structured && (degreeConstraints.some(constraint => constraint?.doctorateOnly)
+  const constraints = degreeConstraints(explicitDegrees.length ? explicitDegrees : (degreeFallback || common.degree) ? (degreeFallback || common.degree).split('；') : []);
+  const masters = structured && constraints.length > 0 && constraints.every(constraint => constraint?.allows === true) && !onlyDoctorate(conditions);
+  const doctorateOnly = structured && (constraints.some(constraint => constraint?.doctorateOnly)
     || onlyDoctorate(conditions));
   const cohorts = [...conditions.matchAll(/(20\d{2})\s*(?:届|年(?:应届)?毕业生)/g)].map(m => Number(m[1]));
   const rangeCohort = includesCohortRange(conditions, profile.graduationYear);
@@ -358,7 +369,8 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   const targetNegated = negatesCohort(conditions, profile.graduationYear);
   const wrongCohort = targetNegated || (cohorts.length > 0 && !cohorts.includes(profile.graduationYear) && !unrestrictedCohort);
   const doctorateScopedCohort = new RegExp(`${targetCohort}(?:毕业生)?\\s*(?:的)?\\s*博士`).test(conditions);
-  const cohortConfirmed = structured && (cohorts.includes(profile.graduationYear) || rangeCohort) && !targetNegated && !doctorateScopedCohort;
+  const scopedCohort = rowCohortConditions(conditions, common, profile.graduationYear);
+  const cohortConfirmed = structured && scopedCohort.confirmed && !targetNegated && !doctorateScopedCohort;
   const directionText = structured ? fields.filter(([key]) => key && !/代码|编号|单位|医院|人数|计划数|招聘数量|学历|学位/.test(key)).map(([, value]) => value).join(' ') || text : text;
   const direction = positionDirection(directionText, structured);
   const requirements = [];
@@ -377,8 +389,10 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   // Multiple batches with different dates require a row-specific date or human review.
   const pageDeadlines = [...(page.text || '').matchAll(/报名\s*(?:截止(?:时间|日期)?|时间|日期)|截止(?:报名|时间|日期)|报名.{0,8}?截至/g)]
     .map(match => extractDeadline(page.text.slice(match.index), deadlineYear)).filter(Boolean);
+  const commonDates = common.registration.map(value => datesIn(value, deadlineYear).at(-1)).filter(Boolean);
   const deadline = extractDeadline(text, deadlineYear)
-    || (new Set(pageDeadlines).size === 1 ? pageDeadlines[0] : null);
+    || (new Set(pageDeadlines).size === 1 ? pageDeadlines[0] : null)
+    || (new Set(pageDeadlines).size <= 1 && new Set(commonDates).size === 1 ? commonDates[0] : null);
   if (!deadline && new Set(pageDeadlines).size > 1) requirements.push('公告存在多批次报名日期，当前岗位截止时间需单独核对');
   const matches = [];
   if (masters) matches.push('岗位学历要求包含硕士');
@@ -406,13 +420,14 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
     headcount: field(/人数|计划数|招聘数量/), conditionExcerpt: structured ? clean(text).slice(0, 800) : '',
     province: source.province, role, url: page.url, published: page.published,
     deadline, matches, requirements, structured, ...direction,
-    qualificationEvidence: { masters, graduationYear: cohortConfirmed ? profile.graduationYear : null },
-    excluded: doctorateOnly ? '该岗位仅列博士学历' : wrongCohort ? '届别不符' : null,
+    qualificationEvidence: { masters, graduationYear: cohortConfirmed ? profile.graduationYear : null, cohortGeneral: /应往届|届别不限|毕业.{0,6}不限/.test(scopedCohort.quote) },
+    commonEvidence: { cohort: scopedCohort, degree: common.degree, application: common.application, registration: common.registration, certificateDeadline: common.certificateDeadline, currentCertificate: common.currentCertificate },
+    excluded: doctorateOnly ? '该岗位仅列博士学历' : wrongCohort || scopedCohort.negated ? '届别不符' : null,
   }, { profile });
 }
 
 export function rankJobs(jobs, config, today = chinaDate()) {
-  const ranked = jobs.filter(job => !job.excluded && (!job.deadline || daysBetween(job.deadline, today) >= 0))
+  const ranked = jobs.filter(job => !job.excluded && !['mismatch', 'blocked'].includes(job.verification?.state) && (!job.deadline || daysBetween(job.deadline, today) >= 0))
     .map(job => assessJobQuality(job, config, today))
     .filter(job => !job.excluded)
     .sort((a, b) => b.qualityScore - a.qualityScore || (b.published || '').localeCompare(a.published || '') || a.id.localeCompare(b.id));
@@ -438,7 +453,7 @@ export function rankJobs(jobs, config, today = chinaDate()) {
 function crossSourceKey(job) {
   // No fuzzy employer/title matching. Old state lacking this evidence stays separate.
   if (!job.structured || !job.employerExplicit || !job.positionCode || !job.specialtyRequirement || !job.title
-    || !job.qualificationEvidence?.graduationYear || !job.recruitmentCycle || !job.deliveryVersion
+    || !job.qualificationEvidence?.graduationYear || job.qualificationEvidence?.cohortGeneral || !job.recruitmentCycle || !job.deliveryVersion
     || !/^20\d{2}-\d{2}-\d{2}$/.test(job.deadline || '')) return null;
   return JSON.stringify([clean(job.employerExplicit), clean(job.positionCode), job.qualificationEvidence.graduationYear,
     job.recruitmentCycle, job.deadline, clean(job.title), clean(job.specialtyRequirement)]);

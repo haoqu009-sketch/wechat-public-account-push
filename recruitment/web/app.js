@@ -169,28 +169,52 @@ function renderCard(job) {
   const card = element('article', 'job-card');
   const top = element('div', 'card-top');
   const badges = element('div', 'badges');
-  badges.append(element('span', `badge ${job.status === 'priority' ? 'badge-priority' : ''}`, job.priorityLabel || '待核实线索'));
+  const verification = job.verification;
+  const verdict = { matched: '已核对关键条件', partial: '已核验 · 有具体疑点', blocked: '材料未取得或未对应', mismatch: '存在明确不匹配' };
+  badges.append(element('span', `badge ${job.status === 'priority' ? 'badge-priority' : ''}`, verdict[verification?.state] || job.priorityLabel || '待核实线索'));
   if (job.isNew) badges.append(element('span', 'badge badge-new', '本轮候选'));
   if (job.stale || job.sourceHealthy === false) badges.append(element('span', 'badge badge-stale', '缓存待复核'));
   top.append(badges, element('span', 'province', job.province || '地区待核实'));
   card.append(top, element('h3', 'job-title', job.title), element('p', 'organization', job.organization));
   card.append(element('p', 'direction', `${job.role === 'physician' ? '影像医师' : job.role === 'technician' ? '技师候补' : '未核验招聘线索'} · ${job.directionLabel || '具体方向待核对'}`));
+  if (verification) {
+    card.append(element('p', 'verification-summary', verification.summary));
+    if (verification.issues?.length) appendList(card, verification.issues, 'verification-issues');
+  }
   const facts = element('dl', 'job-facts');
   facts.append(fact('学历 / 学位', job.degreeRequirement), fact('专业要求', job.specialtyRequirement, 'fact-specialty'), fact('人数', job.headcount, 'fact-headcount'));
   card.append(facts);
   const deadlineRow = element('div', 'deadline-row');
   const days = dayDistance(job.deadline);
-  const deadline = days === null ? '截止待核实' : `${dateLabel(job.deadline)}${days === 0 ? ' · 今日截止' : days <= 3 ? ` · ${days}天后截止` : ''}`;
+  const rolling = verification?.evidence?.find(item => item.field === 'application' && /招满即止/.test(item.value));
+  const deadline = days === null ? rolling ? '招满即止' : '原文尚无明确截止依据' : `${dateLabel(job.deadline)}${days === 0 ? ' · 今日截止' : days <= 3 ? ` · ${days}天后截止` : ''}`;
   deadlineRow.append(element('span', 'deadline-label', '报名截止'), element('span', `deadline-value${days === null ? ' unknown' : days <= 3 ? ' urgent' : ''}`, deadline));
-  deadlineRow.append(element('span', 'deadline-note', '报名是否开始，请核对原文'));
+  deadlineRow.append(element('span', 'deadline-note', rolling ? '公告接受报名，不代表岗位仍有空缺' : '以原文报名安排及最新调整为准'));
   card.append(deadlineRow);
-  if (job.qualityReasons.length) appendList(card, job.qualityReasons.slice(0, 3), 'quality-reasons');
+  if (!verification && job.qualityReasons.length) appendList(card, job.qualityReasons.slice(0, 3), 'quality-reasons');
 
   const bottom = element('div', 'card-bottom');
   const details = element('details', 'job-details');
-  details.append(element('summary', '', '条件摘录与核对事项'));
+  details.append(element('summary', '', verification ? '查看逐项证据与核验过程' : '条件摘录与核对事项'));
   const body = element('div', 'detail-body');
-  if (job.requirements.length) { body.append(element('h4', '', '尚待核对')); appendList(body, job.requirements); }
+  if (verification) {
+    body.append(element('h4', '', '已取得的原文证据'));
+    for (const proof of verification.evidence || []) {
+      const section = element('div', 'verification-evidence');
+      section.append(element('p', 'evidence-value', proof.value), element('blockquote', 'excerpt', proof.quote), link(`${proof.locator} ↗`, proof.url, 'evidence-link'));
+      body.append(section);
+    }
+    if (!verification.evidence?.length) body.append(element('p', '', '本次尚未取得可确认具体条件的原始证据，没有用平台摘要代替官方核验。'));
+    if (verification.attempts?.length) {
+      body.append(element('h4', '', '本次实际核验过程'));
+      const list = element('ul', 'verification-attempts');
+      for (const attempt of verification.attempts) {
+        const item = element('li'); item.append(element('span', '', attempt.reason + ' '), link('查看对应页面 ↗', attempt.url, 'evidence-link')); list.append(item);
+      }
+      body.append(list);
+    }
+    body.append(element('p', 'source-note', `核验时间：${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'short', timeStyle: 'short', hour12: false }).format(new Date(verification.checkedAt))}（北京时间）。只核对已知条件，不替代招聘方资格审核。`));
+  } else if (job.requirements.length) { body.append(element('h4', '', '尚待核对')); appendList(body, job.requirements); }
   if (job.conditionExcerpt) body.append(element('h4', '', '岗位条件摘录'), element('p', 'excerpt', job.conditionExcerpt));
   if (job.announcementTitle) body.append(element('h4', '', '所属公告'), element('p', '', job.announcementTitle));
   if (job.announcementText) body.append(element('h4', '', '公告正文摘录（非完整原文）'), element('p', 'excerpt', job.announcementText));
@@ -198,7 +222,7 @@ function renderCard(job) {
   dates.append(fact('发布日期', dateLabel(job.published)), fact('采集日期', dateLabel(job.collectedAt)));
   body.append(dates, element('p', 'source-note', `采集来源：${job.sourceName || '待核实'}${job.sourceHealthy ? '' : ' · 本次未完成检查，需复核最新公告'}`));
   details.append(body);
-  bottom.append(details, link(job.role === 'clue' ? '查看来源原文 ↗' : '查看官方原文 ↗', job.url, 'official-link'));
+  bottom.append(details, link(verification?.officialUrl ? '查看核验原文 ↗' : job.role === 'clue' ? '查看来源原文 ↗' : '查看官方原文 ↗', verification?.officialUrl || job.url, 'official-link'));
   card.append(bottom);
   item.append(card);
   return item;

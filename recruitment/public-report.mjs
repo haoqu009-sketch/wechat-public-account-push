@@ -45,6 +45,7 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
     } catch { /* Invalid source URLs cannot become public official links. */ }
     for (const host of source.allowedHosts || []) if (typeof host === 'string') hosts.add(host);
   }
+  for (const authority of config.verification?.authorities || []) for (const host of authority.hosts || []) hosts.add(host);
   const sources = configuredSources.map(source => {
     const result = coverage.find(item => item?.name === source.name);
     const ok = result?.ok === true;
@@ -78,7 +79,22 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
   const project = job => {
     const sourceName = text(job.sourceName || job.organization, 140);
     const collectedAt = date(job.collectedAt);
-    const sourceHealthy = sourceHealth.get(sourceName) === true;
+    const verifiedToday = job.verification?.officialUrl && job.verification?.checkedAt?.slice(0, 10) === generated.slice(0, 10)
+      && ['matched', 'partial', 'mismatch'].includes(job.verification.state);
+    const sourceHealthy = verifiedToday || sourceHealth.get(sourceName) === true;
+    const verification = job.verification && {
+      version: 1, checkedAt: job.verification.checkedAt, state: job.verification.state,
+      summary: text(job.verification.summary, 600), officialUrl: publicUrl(job.verification.officialUrl, hosts),
+      issues: strings(job.verification.issues, 12),
+      evidence: (job.verification.evidence || []).slice(0, 12).flatMap(item => {
+        const url = publicUrl(item.url, hosts);
+        return url ? [{ field: text(item.field, 40), value: text(item.value), quote: text(item.quote, 600), url, locator: text(item.locator, 100) }] : [];
+      }),
+      attempts: (job.verification.attempts || []).slice(0, 8).flatMap(item => {
+        const url = publicUrl(item.url, hosts);
+        return url ? [{ url, result: item.result, reason: text(item.reason) }] : [];
+      }),
+    };
     return {
       id: text(job.id, 100), title: text(job.title, 160), organization: text(job.organization, 160),
       sourceName, province: text(job.province, 40), role: job.role, status: job.status === 'priority' ? 'priority' : 'review',
@@ -88,13 +104,16 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
       conditionExcerpt: text(job.conditionExcerpt, 800), announcementTitle: text(job.announcementTitle, 200), announcementText: text(job.announcementText, 1200),
       matches: strings(job.matches), requirements: strings(job.requirements), structured: job.structured === true,
       url: publicUrl(job.url, hosts), published: date(job.published), deadline: date(job.deadline), collectedAt,
-      sourceHealthy, stale: !sourceHealthy || collectedAt !== reportDate,
+      sourceHealthy: Boolean(sourceHealthy), stale: !sourceHealthy || (!verifiedToday && collectedAt !== reportDate),
       isNew: job.role !== 'clue' && newIds.has(job.id), isReminder: job.role !== 'clue' && reminderIds.has(job.id),
+      ...(verification ? { verification } : {}),
     };
   };
   const publicJobs = rankJobs([...complete.physicians, ...complete.technicians], config, reportDate).map(project);
-  const leads = rankJobs(candidates.filter(job => job.role === 'clue' || job.sourceKind === 'aggregator'), config, reportDate)
-    .filter(job => job.role === 'clue').slice(0, 300).map(project);
+  const audit = candidates.filter(job => ['blocked', 'mismatch'].includes(job.verification?.state));
+  const leads = [...rankJobs(candidates.filter(job => job.role === 'clue' || job.sourceKind === 'aggregator'), config, reportDate)
+    .filter(job => job.role === 'clue'), ...audit].filter((job, index, values) => values.findIndex(item => item.id === job.id) === index)
+    .slice(0, 300).map(job => project({ ...job, role: 'clue', status: 'review' }));
   const sourceSuccessCount = sources.filter(source => source.ok).length;
   const limitations = ['仅覆盖已配置且可读取的官方及聚合来源，未收录不代表没有招聘；具体资格与报名状态以官方公告为准。'];
   if (leads.length) limitations.push(`另列${leads.length}条待核实招聘线索，不计入医师或技师岗位；平台转载不代表官方已核验或确认可报名。`);

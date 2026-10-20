@@ -206,4 +206,11 @@ summary { cursor: pointer; min-height: 44px; }
   .official-link { font-size: 13px; }
   .source-diagnostics { padding-inline: 16px; }
 }
+.verification-summary { margin: 16px 0 8px; color: #163448; font-weight: 600; line-height: 1.7; }
+.verification-issues { margin: 8px 0 18px; padding-left: 20px; color: #73552f; font-size: 13px; line-height: 1.8; }
+.verification-evidence { margin: 14px 0; padding: 12px 14px; border-left: 2px solid #719c99; background: #f5f8f8; overflow-wrap: anywhere; }
+.verification-evidence .evidence-value { margin: 0 0 7px; font-weight: 600; }
+.verification-evidence blockquote { margin: 0 0 8px; font-style: normal; }
+.evidence-link { color: #275c6c; font-size: 12px; text-underline-offset: 3px; }
+.verification-attempts { padding-left: 18px; line-height: 1.8; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; } }
