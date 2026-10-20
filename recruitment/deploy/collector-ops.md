@@ -108,3 +108,12 @@ sudo systemctl start recruitment-collector-refresh.service
 - 主列表3条分别为玉泉医院、鸡西市人民医院及吉林大学第一医院，分别展示6、7、9项原文证据。玉泉只剩具体专业归属疑点；鸡西保留届别与专业代码两项问题；吉大一院另有在读毕业证材料、执业注册及工作经历疑点。赤峰表内学历学位取得期限2026-08-31、南京非2026届在读限制被明确指出，未作为推荐候选。
 - 最终公开回读后，收件人记录、pending及server-control哈希与升级前一致；仍为2位接收人、2条已接受记录，没有本次微信发送。nginx、网页同步服务和两个timer均active；晨报仍为北京时间07:30。
 - 各次发布前的恢复材料位于root私有 `/etc/recruitment-collector/migration/pre-verification-<revision>/`，包含状态、审计、环境和招聘静态页备份。依赖锁文件未改变，发布副本使用校验相同锁文件的既有依赖，没有新增付费服务或改动主网站。
+## 附件解析正式部署（2026-10-20）
+
+- 采集release为`5cfaad3`，独立Python环境`/opt/recruitment-collector/document-runtime-20261020`，新增免费本机Tesseract中英OCR及antiword。仅在已确认OCR实际输出与资源占用后，于两个root600环境文件设置文档Python路径和OCR开关；未改个人画像、微信配置、全局锁、定时器和资源限制。
+- 本地222项回归、Linux非特权用户47项附件/核验测试通过；中文图片和扫描PDF样本保持“待复核”，未产生结构化确认岗位。真实原文QA只读生产state并写入独立私有QA目录。
+- 10:10:02生成报告`297dc9841dd98095008be5d7`，公共latest/不可变快照与采集端相同，旧报告`60ca388b00bce8d3670a755b`仍可由新页面正常展示。来源15/18，4条候选均为partial，45条核验记录。55份附件：19 parsed、1 partial、24 optional、2 queued、3 review、1 ocr_review、5 failed；不是55个在招岗位。
+- 使用先前上传的黑龙江人才周原件，通过已批准CDN域名和唯一附件标题定位导入私有`state/attachment-imports`，读出黑龙江省医院彩超医生行。对官网403、手动原件与当前文件未比对、2027届条件未确认仍明确标注；不宣称当前符合报名资格。
+- 两轮发布备份为`/etc/recruitment-collector/migration/pre-attachments-e3fb33f/`及`pre-attachments-5cfaad3/`；包含旧receiver/静态页/环境/权威state/pending/marker及审计。两轮均仅调用refresh，最终收件人/已发送记录、pending、marker、timer哈希不变，2位接收人及2条已接受记录未增加，nginx/同步服务/两个timer均active。
+- 浏览器不可控制，完成了DOM交互及公网资产/数据验收，未做截图验收。更多边界和下一次发布步骤见`attachment-processing.md`。
+

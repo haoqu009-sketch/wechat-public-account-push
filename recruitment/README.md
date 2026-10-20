@@ -150,4 +150,4 @@ node --use-env-proxy recruitment/github-state.mjs publish
 
 ## 附件处理升级说明
 
-附件清单、Word原生表格、原生PDF单元格、手动原件重解析及可选本机OCR的边界和部署验收见[附件处理升级](deploy/attachment-processing.md)。该说明明确区分本地已验证功能与尚未部署的服务器组件；不要仅凭代码存在就认定线上已启用。
+附件清单、Word原生表格、原生PDF单元格、手动原件重解析及本机OCR已于2026-10-20部署。具体版本、验收结果、备份位置和保守边界见[附件处理升级](deploy/attachment-processing.md)。OCR文字不自动成为已核实岗位条件；来源拒绝下载仍须如实标注。
