@@ -297,9 +297,9 @@ export function assessJobQuality(job, config, today = chinaDate()) {
     : wrongCohort ? '届别不符' : datedUrlIsOld(job, today, config.lookbackDays) ? '未识别发布日期且URL日期明显过旧，需重新核验公告' : null);
   let score = role === 'physician' ? 1000 : role === 'technician' ? 0 : -500;
   reasons.push(role === 'physician' ? '影像医师优先' : role === 'technician' ? '影像技师候补' : '仅公告线索，未确认临床职业类型');
-  if (job.structured) { score += 40; reasons.push('已解析官方具体岗位行'); }
+  if (job.structured) { score += job.sourceKind === 'aggregator' ? 10 : 40; reasons.push(job.sourceKind === 'aggregator' ? '已读取平台列示字段，官方岗位表尚未核验' : '已解析官方具体岗位行'); }
   else reasons.push('仅公告线索，具体岗位条件待核实');
-  if (evidence.masters) { score += 90; reasons.push('该岗位学历要求明确包含硕士层级'); }
+  if (evidence.masters) { score += 90; reasons.push(job.sourceKind === 'aggregator' ? '平台列示学历包含硕士层级，需核对原始岗位表' : '该岗位学历要求明确包含硕士层级'); }
   else reasons.push('是否接受硕士尚待核实');
   const cohortConfirmed = evidence.graduationYear === targetYear;
   if (cohortConfirmed) { score += 90; reasons.push(`该岗位明确列出${targetYear}届毕业生`); }

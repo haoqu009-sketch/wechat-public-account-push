@@ -33,6 +33,7 @@ test('平台内容无论医师字样多明确，都只能进线索，不进入�
   const pub = createPublicReport({ jobs: jobs.map(job => ({ ...job, collectedAt: today, secret: 'PRIVATE_SENTINEL' })), digest: { today, physicians: [], technicians: [], reminders: [] }, coverage: [{ name: source.name, ok: true, articles: 1, warnings: [] }], config, generatedAt: '2026-10-20T01:00:00.000Z' });
   assert.equal(pub.jobs.length, 0); assert.equal(pub.summary.activeCount, 0);
   assert.equal(pub.leads.length, 1); assert.equal(pub.leads[0].isNew, false);
+  assert.doesNotMatch(pub.leads[0].qualityReasons.join('；'), /已解析官方具体岗位行/);
   assert.doesNotMatch(JSON.stringify(pub), /PRIVATE_SENTINEL/);
   assert.doesNotThrow(() => validatePublicReport(pub));
   assert.throws(() => validatePublicReport({ ...pub, leads: [{ ...pub.leads[0], role: 'physician' }] }));
