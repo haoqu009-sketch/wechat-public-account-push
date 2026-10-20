@@ -12,7 +12,7 @@ function publicUrl(value, hosts) {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || !hosts.has(url.hostname)) return null;
-    if ([...url.searchParams.keys()].some(key => /^(?:access_token|token|secret|key|api_key|signature|authorization)$/i.test(key))) return null;
+    if ([...url.searchParams.keys()].some(key => /^(?:access_token|token|secret|key|api_key|signature|authorization|password|passwd|credential)$/i.test(key))) return null;
     url.hash = '';
     for (const key of [...url.searchParams.keys()]) if (/^(?:utm_.+|from|spm|source)$/i.test(key)) url.searchParams.delete(key);
     return url.href;
@@ -22,11 +22,22 @@ function publicUrl(value, hosts) {
 // Never export a raw error, request URL or arbitrary diagnostic object.
 function publicWarning(value) {
   if (typeof value !== 'string' || !value.trim()) return null;
-  if (/附件|PDF|XLS/i.test(value)) return '部分附件尚未完整解析，请核对官方公告附件';
+  if (/附件清单/.test(value)) return '部分岗位附件未完成，请展开附件清单查看具体原因';
+  if (/附件|PDF|XLS/i.test(value)) return '部分附件尚待核实；辅助报名材料不代表岗位表缺失';
   if (/发布日期/.test(value)) return '部分公告的发布日期尚未识别';
   if (/历史|有界|最多|未检查|未覆盖/.test(value)) return '本次只检查部分公告，尚未覆盖全部历史信息';
   if (/读取失败|HTTP|网络|连接|超时/i.test(value)) return '部分公告或附件读取失败，请核对官方页面';
   return '存在尚待人工核实的采集内容';
+}
+
+function publicAttachments(value, hosts) {
+  return (Array.isArray(value) ? value : []).slice(0, 200).flatMap(item => {
+    const url = publicUrl(item.url, hosts), pageUrl = publicUrl(item.pageUrl, hosts);
+    if (!url || !pageUrl || !['required', 'optional', 'unknown'].includes(item.purpose)
+      || !['queued', 'optional', 'parsed', 'partial', 'review', 'ocr_review', 'failed'].includes(item.status)) return [];
+    return [{ title: text(item.title, 160) || '附件', url, pageUrl, format: text(item.format, 10), purpose: item.purpose,
+      status: item.status, reason: text(item.reason, 600), checkedAt: item.checkedAt, rows: item.rows }];
+  });
 }
 
 export function createPublicReport({ jobs, digest, coverage, config, generatedAt = new Date().toISOString() }) {
@@ -55,6 +66,7 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
       articles: Number.isInteger(result?.articles) && result.articles >= 0 ? result.articles : 0,
       warnings: [...new Set((Array.isArray(result?.warnings) ? result.warnings : []).map(publicWarning).filter(Boolean))],
       error: ok ? null : result ? '本次来源检查未完成，请核对官方页面' : '本次尚未检查该来源',
+      ...(result?.attachments ? { attachments: publicAttachments(result.attachments, hosts) } : {}),
     };
   });
   const sourceHealth = new Map(sources.map(source => [source.name, source.ok]));
@@ -94,6 +106,7 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
         const url = publicUrl(item.url, hosts);
         return url ? [{ url, result: item.result, reason: text(item.reason) }] : [];
       }),
+      ...(job.verification.attachments ? { attachments: publicAttachments(job.verification.attachments, hosts) } : {}),
     };
     return {
       id: text(job.id, 100), title: text(job.title, 160), organization: text(job.organization, 160),

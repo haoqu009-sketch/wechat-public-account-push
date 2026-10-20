@@ -56,6 +56,19 @@ test('旧快照没有leads仍能显示，坏数据进入明确失败态', async 
   assert.equal(broken.document.querySelectorAll('#jobs .job-card').length, 0);
 });
 
+test('附件清单展示具体状态和辅助材料，文件名按纯文本输出', async t => {
+  const data = report();
+  data.sources[0].attachments = [
+    { title: '<img src=x onerror=alert(1)>岗位表', url: 'https://hospital.example/jobs.xlsx', status: 'failed', purpose: 'required', reason: '附件下载失败（HTTP 403）' },
+    { title: '报名表.doc', url: 'https://hospital.example/apply.doc', status: 'optional', purpose: 'optional', reason: '辅助材料，不影响岗位表' },
+  ];
+  const window = await page(t, data), document = window.document;
+  const ledger = document.querySelector('.attachment-ledger');
+  assert.match(ledger.textContent, /2份，1份未完成/); assert.match(ledger.textContent, /HTTP 403/);
+  assert.match(ledger.textContent, /辅助材料/); assert.equal(ledger.querySelectorAll('img').length, 0);
+  ledger.querySelector('summary').click(); assert.equal(ledger.open, true);
+});
+
 test('核验结论、剩余问题和原文证据直接可读，证据文字不能注入HTML', async t => {
   const data = report();
   data.jobs[0].verification = {

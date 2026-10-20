@@ -39,6 +39,20 @@ const publicUrl = (value, nullable = false) => {
   if ([...url.searchParams.keys()].some(key => /^(?:access_token|token|secret|key|api_key|signature|authorization|password|passwd|credential)$/i.test(key))) invalid();
 };
 
+function validateAttachments(entries) {
+  if (!Array.isArray(entries) || entries.length > 200) invalid();
+  for (const item of entries) {
+    exactKeys(item, ['title', 'url', 'pageUrl', 'format', 'purpose', 'status', 'reason', 'checkedAt', 'rows']);
+    string(item.title, 160, true); publicUrl(item.url); publicUrl(item.pageUrl); string(item.reason, 600, true);
+    if (!['xls', 'xlsx', 'doc', 'docx', 'pdf', 'jpg', 'jpeg', 'png'].includes(item.format)
+      || !['required', 'optional', 'unknown'].includes(item.purpose)
+      || !['queued', 'optional', 'parsed', 'partial', 'review', 'ocr_review', 'failed'].includes(item.status)) invalid();
+    string(item.checkedAt, 24, true);
+    if (!Number.isFinite(Date.parse(item.checkedAt)) || new Date(item.checkedAt).toISOString() !== item.checkedAt) invalid();
+    integer(item.rows);
+  }
+}
+
 // Matches the public-report.mjs export contract, including each nested public-field allowlist.
 // reportId is the trusted publisher's 24-hex identifier. We do not recompute its hash:
 // immutable-file equality enforces ID reuse without coupling to JSON object-key order.
@@ -80,7 +94,9 @@ export function validatePublicReport(report) {
     for (const key of ['published', 'deadline', 'collectedAt']) nullableDate(job[key]);
     if (job.verification !== undefined) {
       const verification = job.verification;
-      exactKeys(verification, ['version', 'checkedAt', 'state', 'summary', 'officialUrl', 'issues', 'evidence', 'attempts']);
+      const keys = ['version', 'checkedAt', 'state', 'summary', 'officialUrl', 'issues', 'evidence', 'attempts'];
+      exactKeys(verification, Object.hasOwn(verification, 'attachments') ? [...keys, 'attachments'] : keys);
+      if (verification.attachments !== undefined) validateAttachments(verification.attachments);
       if (verification.version !== 1 || !['matched', 'partial', 'blocked', 'mismatch'].includes(verification.state)) invalid();
       string(verification.checkedAt, 24, true);
       if (!Number.isFinite(Date.parse(verification.checkedAt)) || new Date(verification.checkedAt).toISOString() !== verification.checkedAt) invalid();
@@ -100,7 +116,8 @@ export function validatePublicReport(report) {
   }
   const sourceIds = new Set();
   for (const source of report.sources) {
-    exactKeys(source, SOURCE_KEYS);
+    exactKeys(source, Object.hasOwn(source, 'attachments') ? [...SOURCE_KEYS, 'attachments'] : SOURCE_KEYS);
+    if (source.attachments !== undefined) validateAttachments(source.attachments);
     string(source.id, 80, true);
     if (sourceIds.has(source.id)) invalid();
     sourceIds.add(source.id);

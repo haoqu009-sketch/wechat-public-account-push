@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import { clean, safeUrl, pageData, jobFrom, datesIn } from './core.mjs';
 import { commonConditions } from './conditions.mjs';
-import { spreadsheetRows, pdfText } from './attachments.mjs';
+import { processAttachments } from './attachment-pipeline.mjs';
 
 const unique = values => [...new Set(values.filter(Boolean))];
 const normal = value => clean(value).replace(/\s|[｜|（）()、，,；;：:]/g, '');
@@ -65,6 +65,10 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   const common = commonConditions(page, profile), proofs = [], issues = [], mismatches = [];
   const row = job.conditionExcerpt || '', rowUrl = job.evidenceUrl || page.url;
   const add = (field, value, quote, scope = locator, url = rowUrl) => { if (quote) proofs.push(evidence(field, value, quote, url, scope)); };
+  if (job.attachmentNotes) {
+    add('attachmentNotes', '附件另有补充说明，需核对适用范围', job.attachmentNotes, '附件表外说明');
+    issues.push('附件另有表外补充条件，已保留原文；适用范围尚需核对，未默认全部满足');
+  }
   const scoped = job.commonEvidence?.cohort;
   if (job.qualificationEvidence?.graduationYear === profile.graduationYear) add('cohort', `${profile.graduationYear}届在招聘范围内`, scoped?.quote || row, scoped?.scope || locator, scoped?.scope === '公告统一条件' ? page.url : rowUrl);
   else issues.push(`原文尚未明确${profile.graduationYear}届是否可报；已取得学历的往届人员可报不等于未毕业人员可报`);
@@ -177,31 +181,19 @@ export async function verifyJobs(jobs, config, today, options = {}) {
         const job = jobFrom(`岗位名称：${narrative[0][1]}${narrative[0][2]}；学历要求：${common.degree}；专业要求：${specialty}；其他条件：${conditions}`, page, source, config.profile, 1);
         if (job) rows.push({ ...job, evidenceLocator: '官方正文明确招聘语句及聘用条件（非表格）' });
       }
-      const errors = [];
-      for (const attachment of page.attachments.filter(file => /岗位|计划|需求|目录|招聘/.test(file.title) && !/报名表|登记表|承诺|专业参考目录/.test(file.title)).slice(0, 3)) {
-        try {
-          if (!['xls', 'xlsx', 'pdf'].includes(attachment.format)) throw new Error('岗位附件为图片或Word，当前解析器尚不支持');
-          const file = await fetchOne(attachment.url, authority.hosts);
-          if (['xls', 'xlsx'].includes(attachment.format)) {
-            (await spreadsheetRows(file.bytes)).forEach((row, index) => {
-              const job = jobFrom(row, page, source, config.profile, index + 1);
-              if (job) rows.push({ ...job, evidenceUrl: attachment.url, evidenceLocator: `${attachment.title} · ${job.positionCode ? `岗位代码${job.positionCode}` : `第${index + 1}条提取记录`}` });
-            });
-          } else {
-            const pages = await (options.pdfText || pdfText)(file.bytes);
-            // PDF text is not a reconstructed table. Keep page evidence without inventing column relationships.
-            errors.push(`PDF已提取${pages.length}页文字，但尚未可靠重建岗位列关系：${attachment.title}`);
-          }
-        } catch (error) { errors.push(/HTTP \d+/.exec(error.message)?.[0] ? `岗位附件访问受限（${error.message.match(/HTTP \d+/)[0]}）` : clean(error.message).slice(0, 150)); }
-      }
-      return { page, rows, errors, html };
+      const parsed = await processAttachments(page, fetchOne, authority.hosts, options);
+      parsed.rows.forEach((row, index) => {
+        const job = jobFrom(row.text, page, source, config.profile, index + 1);
+        if (job) rows.push({ ...job, evidenceUrl: row.url, evidenceLocator: `${row.title} · ${row.locator}`, attachmentNotes: row.notes, attachmentIncomplete: row.incomplete });
+      });
+      return { page, rows, errors: parsed.issues, attachments: parsed.entries, html };
     })());
     return documents.get(url);
   };
   const output = [];
   for (const [index, job] of jobs.entries()) {
     if (index >= (settings.maxJobs || 60)) { output.push({ ...job, verification: { version: 1, checkedAt, state: 'blocked', summary: '本轮核验数量达到上限，尚未处理', officialUrl: null, issues: ['排队等待下一轮，不能视为已核验'], evidence: [], attempts: [] } }); continue; }
-    const attempts = [], candidates = [], proofs = [];
+    const attempts = [], candidates = [], proofs = [], attachments = [];
     const authorityFor = url => { try { const host = new URL(url).hostname; return authorities.find(item => item.hosts.includes(host)); } catch { return null; } };
     const own = authorityFor(job.url);
     if (own?.original) candidates.push(job.url);
@@ -224,6 +216,7 @@ export async function verifyJobs(jobs, config, today, options = {}) {
       if (!authority) continue;
       try {
         const document = await loadOfficial(url, authority), { page, rows, errors } = document;
+        attachments.push(...document.attachments);
         const expectedUnit = normal((job.organization || '').split('发布')[0].split(/[（(]/)[0]).replace(/^(?:黑龙江省|广东省|四川省|湖北省|陕西省|湖南省)/, '');
         const materialText = normal(page.title + page.text + rows.map(row => row.employerExplicit + row.conditionExcerpt).join(' '));
         const aliasConfirmed = (authority.employerAliases || []).some(alias => normal(alias) === expectedUnit)
@@ -263,6 +256,7 @@ export async function verifyJobs(jobs, config, today, options = {}) {
     const result = selected || { ...job, verification: fallback };
     if (result.verification.state === 'blocked') result.verification.issues.push(...attempts.filter(attempt => attempt.result === 'blocked').map(attempt => attempt.reason));
     result.verification.attempts = attempts.slice(0, 8);
+    result.verification.attachments = [...new Map(attachments.map(item => [item.url, item])).values()];
     result.verification.issues = unique(result.verification.issues).slice(0, 12);
     if (result.verification.state === 'partial') result.verification.summary = `已核对原文，剩余${result.verification.issues.length}项具体问题`;
     output.push(result);

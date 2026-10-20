@@ -213,4 +213,10 @@ summary { cursor: pointer; min-height: 44px; }
 .verification-evidence blockquote { margin: 0 0 8px; font-style: normal; }
 .evidence-link { color: #275c6c; font-size: 12px; text-underline-offset: 3px; }
 .verification-attempts { padding-left: 18px; line-height: 1.8; }
+.attachment-ledger { margin: 14px 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.attachment-ledger summary { cursor: pointer; color: #275c6c; }
+.attachment-items { padding-left: 20px; }
+.attachment-items li { margin: 12px 0; }
+.attachment-items p { margin: 4px 0; }
+.attachment-status { display: block; color: #73552f; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; } }

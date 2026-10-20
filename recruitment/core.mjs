@@ -149,6 +149,15 @@ export function pageData(html, url, source) {
       || link.title.match(/\.(xlsx?|pdf|docx?|png|jpe?g)$/i)?.[1])?.toLowerCase();
     return format ? [{ ...link, format }] : [];
   });
+  // Job plans are sometimes embedded as an image instead of linked as a download.
+  // Restrict discovery to article content and substantial / explicitly labelled images.
+  content.find('img').each((_, node) => {
+    const image = $(node), title = clean(image.attr('alt') || image.attr('title'));
+    if (!/岗位|招聘|计划|需求/.test(title) && !(Number(image.attr('width')) >= 400 && Number(image.attr('height')) >= 150)) return;
+    const address = safeUrl(image.attr('data-src') || image.attr('src'), url, hosts);
+    const format = address?.match(/\.(png|jpe?g)(?:\?|$)/i)?.[1]?.toLowerCase();
+    if (format && !attachments.some(file => file.url === address)) attachments.push({ url: address, title: title || '正文图片（用途待识别）', format });
+  });
   const commonContent = content.clone();
   commonContent.find('table').remove();
   return { title, text, commonText: clean(commonContent.text()), published, rows, attachments, url };

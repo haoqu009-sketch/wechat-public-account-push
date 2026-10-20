@@ -153,9 +153,25 @@ function renderSources(sources) {
     line.append(link(source.name, source.url, 'source-name'), element('span', `source-status${source.ok ? '' : ' failed'}`, source.ok ? '读取成功' : '尚未完成检查'));
     item.append(line, element('p', 'source-description', source.ok ? `本次解析公告 ${source.articles} 篇，仍需核对具体资格与附件。` : normalText(source.error) || '本次来源读取未完成，请核对官方页面。'));
     if (source.warnings.length) appendList(item, source.warnings, 'source-warnings');
+    renderAttachments(item, source.attachments);
     return item;
   });
   $('source-list').replaceChildren(...nodes);
+}
+
+function renderAttachments(container, entries) {
+  if (!Array.isArray(entries) || !entries.length) return;
+  const pending = entries.filter(item => !['parsed', 'optional'].includes(item.status)).length;
+  const details = element('details', 'attachment-ledger');
+  details.append(element('summary', '', `附件清单 · ${entries.length}份${pending ? `，${pending}份未完成` : '，岗位材料已处理'}`));
+  const list = element('ul', 'attachment-items');
+  const labels = { parsed: '已解析', optional: '辅助材料', queued: '排队中', partial: '部分解析', review: '需要复核', ocr_review: 'OCR待复核', failed: '未能读取' };
+  for (const entry of entries) {
+    const item = element('li');
+    item.append(link(entry.title, entry.url, 'evidence-link'), element('span', 'attachment-status', `${entry.purpose === 'required' ? '岗位材料' : entry.purpose === 'optional' ? '辅助材料' : '用途待确认'} · ${labels[entry.status] || '待处理'}`), element('p', '', entry.reason));
+    list.append(item);
+  }
+  details.append(list); container.append(details);
 }
 
 function fact(label, value, className = '') {
@@ -213,6 +229,7 @@ function renderCard(job) {
       }
       body.append(list);
     }
+    renderAttachments(body, verification.attachments);
     body.append(element('p', 'source-note', `核验时间：${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'short', timeStyle: 'short', hour12: false }).format(new Date(verification.checkedAt))}（北京时间）。只核对已知条件，不替代招聘方资格审核。`));
   } else if (job.requirements.length) { body.append(element('h4', '', '尚待核对')); appendList(body, job.requirements); }
   if (job.conditionExcerpt) body.append(element('h4', '', '岗位条件摘录'), element('p', 'excerpt', job.conditionExcerpt));

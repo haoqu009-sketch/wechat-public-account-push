@@ -15,18 +15,20 @@ export function rowsFromGrid(grid) {
     .map(row => row.map((cell, column) => cell ? `${header[column] || `列${column + 1}`}：${cell}` : '').filter(Boolean).join('；'));
 }
 
-export async function spreadsheetRows(bytes) {
+export async function spreadsheetRows(bytes, detailed = false) {
   if (!bytes?.length || bytes.length > 5_000_000) throw new Error('岗位表大小无效');
   const ole = bytes.subarray(0, 8).toString('hex') === 'd0cf11e0a1b11ae1';
   if (!ole && bytes.subarray(0, 2).toString() !== 'PK') throw new Error('附件不是有效XLS/XLSX岗位表');
   const workbook = XLSX.read(bytes, { type: 'buffer', cellFormula: false, cellHTML: false, cellStyles: false, bookVBA: false, sheetRows: 10002 });
   if (workbook.SheetNames.length > 40) throw new Error('岗位表工作表数量超过上限');
-  const result = [];
+  const result = [], issues = [], notes = []; let totalCells = 0;
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
     if (!sheet['!ref']) continue;
     const range = XLSX.utils.decode_range(sheet['!ref']);
     if (range.e.r >= 10000 || range.e.c >= 200 || (range.e.r + 1) * (range.e.c + 1) > 500000) throw new Error('岗位表超过行列上限');
+    totalCells += (range.e.r + 1) * (range.e.c + 1);
+    if (totalCells > 1_000_000) throw new Error('岗位表累计单元格超过上限');
     const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: true, raw: false }).map(row => row.map(clean));
     // Preserve parent labels across merged cells, then combine at most 3 header rows.
     for (const merge of sheet['!merges'] || []) {
@@ -37,9 +39,42 @@ export async function spreadsheetRows(bytes) {
         for (let column = merge.s.c; column <= merge.e.c; column++) grid[row][column] = value;
       }
     }
-    result.push(...rowsFromGrid(grid));
+    if (detailed) {
+      const parsed = gridRecords(grid, `工作表「${name}」`);
+      result.push(...parsed.rows); if (!parsed.complete) issues.push(...parsed.issues);
+      notes.push(...grid.map(row => row.join(' ')).filter(value => /^\s*(?:注[：:意]|说明[：:]|备注[：:])/.test(value)));
+    } else result.push(...rowsFromGrid(grid));
   }
-  return result;
+  return detailed ? { rows: result, clues: [], notes, complete: !issues.length, issues, method: 'spreadsheet-cells' } : result;
+}
+
+export const spreadsheetRecords = bytes => spreadsheetRows(bytes, true);
+
+const headerText = value => clean(value).replace(/\s+/g, '');
+const headerRole = value => {
+  const text = headerText(value).split('/').at(-1);
+  if (/^(?:招聘|用人|引才)?单位(?:名称)?$/.test(text)) return 'employer';
+  if (/^(?:招聘)?(?:岗位|职位)(?:名称)?$|^科室(?:名称)?$/.test(text)) return 'position';
+  if (/学历|学位/.test(text)) return 'degree';
+  if (/专业/.test(text) && !/专业技术|职称/.test(text)) return 'specialty';
+  return '';
+};
+
+// Independent native columns are required; prose and incomplete table rows stay clues.
+export function gridRecords(grid, locator) {
+  const headerIndex = grid.findIndex(row => ['position', 'degree', 'specialty'].every(role => row.some(cell => headerRole(cell) === role)));
+  if (headerIndex < 0) return { rows: [], complete: !grid.some(row => imaging.test(row.join(' '))), issues: ['未找到岗位、学历和专业的独立表头'] };
+  const header = grid[headerIndex].map(headerText), rows = [], issues = [];
+  for (let index = headerIndex + 1; index < grid.length; index++) {
+    const cells = grid[index].map(cell => clean(cell ?? '').replace(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, '$1'));
+    if (!imaging.test(cells.join(' '))) continue;
+    if (cells.every((value, column) => !value || headerText(value) === header[column])) continue;
+    if (cells.length !== header.length || !['position', 'degree', 'specialty'].every(role => cells.some((cell, column) => cell && headerRole(header[column]) === role))) {
+      issues.push(`${locator}第${index + 1}行关键单元格缺失或列数不一致`); continue;
+    }
+    rows.push({ text: cells.map((cell, column) => cell ? `${header[column] || `列${column + 1}`}：${cell}` : '').filter(Boolean).join('；'), locator: `${locator}第${index + 1}行`, method: 'native-cells' });
+  }
+  return { rows, complete: !issues.length, issues };
 }
 
 export async function pdfText(bytes, services = {}) {

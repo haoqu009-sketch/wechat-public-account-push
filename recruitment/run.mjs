@@ -46,7 +46,11 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   let wechat;
   if (!dryRun && !refreshOnly) wechat = readWechatConfig(env);
   if (!sendOnly) {
+    const documentOptions = { python: env.RECRUITMENT_DOCUMENT_PYTHON, ocr: env.RECRUITMENT_OCR_ENABLED === 'true',
+      importDir: env.RECRUITMENT_ATTACHMENT_IMPORT_DIR || path.join(stateDir, 'attachment-imports'),
+      ...(!dryRun ? { parseCacheDir: path.join(stateDir, 'attachment-cache') } : {}) };
     const { jobs, coverage, observedPages } = await (services.collect || collect)(config, today, {
+      ...documentOptions,
       ...(!dryRun ? { cacheDir: path.join(stateDir, 'source-cache') } : {}),
       onSourceComplete: result => console.log(`来源检查 ${result.completed}/${result.total}：${result.name}（${result.ok ? '已读取' : '未完成'}，影像线索${result.jobCount}条）`),
     });
@@ -62,6 +66,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
     let available = Object.values(state.jobs);
     if (config.verification?.enabled && (!services.collect || services.verifyJobs)) {
       available = await (services.verifyJobs || verifyJobs)(available, config, today, {
+        ...documentOptions,
         request: dryRun ? download : cachedDownload(path.join(stateDir, 'source-cache'), download),
         onProgress: result => console.log(`岗位核验 ${result.completed}/${result.total}：${result.state}`),
       });
@@ -77,6 +82,9 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
     await fs.writeFile(path.join(reportDir, 'latest.md'), markdown);
     await fs.writeFile(path.join(reportDir, `${today}.md`), markdown);
     await atomicJson(path.join(reportDir, 'source-status.json'), coverage);
+    const attachmentLedger = [...new Map([...coverage.flatMap(item => item.attachments || []), ...available.flatMap(job => job.verification?.attachments || [])]
+      .map(item => [item.url, item])).values()];
+    await atomicJson(path.join(reportDir, 'attachment-status.json'), { generatedAt: new Date().toISOString(), entries: attachmentLedger });
     await atomicJson(path.join(reportDir, 'preview.json'), report);
     await atomicJson(path.join(reportDir, 'public.json'), createPublicReport({ jobs: available, digest: report, coverage, config }));
     console.log(`来源成功 ${coverage.filter(item => item.ok).length}/${coverage.length}，本次采集影像线索 ${jobs.length} 条；医师 ${report.physicians.length}，技师 ${report.technicians.length}，提醒 ${report.reminders.length}。`);

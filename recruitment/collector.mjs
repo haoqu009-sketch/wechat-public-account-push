@@ -1,7 +1,7 @@
 import { clean, imaging, linksFrom, classifyLink, pageData, jobFrom, safeUrl, daysBetween, extractDeadline } from './core.mjs';
 import { collectPumchSource } from './pumch.mjs';
 import { collectDiscovery } from './discovery.mjs';
-import { spreadsheetRows, pdfText } from './attachments.mjs';
+import { processAttachments } from './attachment-pipeline.mjs';
 import { cachedDownload } from './source-cache.mjs';
 export { spreadsheetRows } from './attachments.mjs';
 
@@ -71,7 +71,8 @@ export async function collectSource(source, config, today, options = {}) {
   if (source.type === 'pumch-api') return collectPumchSource(source, config, today, { ...options, request });
   const pause = options.pause || wait;
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
-  const coverage = { name: source.name, ok: false, articles: 0, warnings: [] };
+  const coverage = { name: source.name, ok: false, articles: 0, warnings: [], attachments: [] };
+  const attachmentBudget = { remaining: 24 };
   const jobs = [];
   const observedPages = [];
   const visited = new Set();
@@ -104,7 +105,10 @@ export async function collectSource(source, config, today, options = {}) {
     }
     if (!discoveredIndex && !articles.size) throw new Error('未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染');
     let attempted = 0;
-    for (const link of [...articles.values()].slice(0, 12)) {
+    const articleLinks = [...articles.values()].slice(0, 12);
+    const articleOffset = articleLinks.length ? (Math.floor(Date.now() / 14_400_000) * 3) % articleLinks.length : 0;
+    // Rotate attachment-budget ownership across notices, not only within a notice.
+    for (const link of articleLinks.slice(articleOffset).concat(articleLinks.slice(0, articleOffset))) {
       attempted++;
       try {
         const response = await request(link.url, hosts);
@@ -122,40 +126,30 @@ export async function collectSource(source, config, today, options = {}) {
         if (page.published && daysBetween(today, page.published) > config.lookbackDays && !stillOpen) { observedPages.push(page.url); continue; }
         if (!page.published) coverage.warnings.push(`有公告未识别发布日期：${clean(link.title).slice(0, 40)}`);
         const rows = [...page.rows];
-        const pdfClues = [];
-        let attachmentFailure = false;
-        for (const attachment of page.attachments.slice(0, 3)) {
-          if (!['xlsx', 'xls', 'pdf'].includes(attachment.format)) {
-            attachmentFailure = true;
-            coverage.warnings.push('有图片或Word附件需人工核对，未自动推断岗位');
-            continue;
-          }
-          try {
-            const file = await request(attachment.url, hosts);
-            if (/html/i.test(file.type) || /^\s*(?:<!doctype html|<html)/i.test(file.bytes.subarray(0, 100).toString('utf8'))) {
-              throw new Error('附件返回网页或下载验证页，需人工核实');
-            }
-            if (attachment.format === 'pdf') {
-              const pages = await (options.pdfText || pdfText)(file.bytes);
-              for (const [number, text] of pages.entries()) if (imaging.test(text)) pdfClues.push({ text, number: number + 1 });
-              coverage.warnings.push('PDF已提取可选文字，仅作为线索；表格列关系、扫描内容及资格仍需核对');
-            } else rows.push(...await spreadsheetRows(file.bytes));
-          } catch (error) { attachmentFailure = true; coverage.warnings.push(`岗位表附件未完成：${error.message}`); }
-          await pause(400);
+        const parsed = await processAttachments(page, request, hosts, { ...options, pause, budget: attachmentBudget });
+        coverage.attachments.push(...parsed.entries);
+        if (!parsed.complete) coverage.warnings.push('岗位附件有待处理项目，详见附件清单；PDF纯文字和OCR仅作为线索');
+        for (const entry of parsed.entries.filter(item => item.status === 'failed')) {
+          const http = entry.reason.match(/HTTP \d+/)?.[0];
+          coverage.warnings.push(http ? `岗位表附件未完成：${http}` : entry.reason);
         }
         if (rows.length) {
           rows.forEach((row, index) => { const job = jobFrom(row, page, source, config.profile, index + 1); if (job) jobs.push(job); });
-        } else if (imaging.test(page.text)) {
+        } else if (!parsed.rows.length && imaging.test(page.text)) {
           const job = jobFrom(page.text, page, source, config.profile);
           if (job) jobs.push(job);
-        } else if (page.attachments.length) {
+        } else if (parsed.entries.some(entry => entry.purpose !== 'optional') && !parsed.rows.length) {
           coverage.warnings.push(`公告附件尚不能确认有无影像岗位：${clean(page.title).slice(0, 40)} ${page.url}`);
         }
-        for (const clue of pdfClues.slice(0, 8)) {
-          const job = jobFrom(clue.text, { ...page, title: `${page.title}｜PDF第${clue.number}页`, text: clue.text }, source, config.profile);
+        for (const [index, row] of parsed.rows.entries()) {
+          const job = jobFrom(row.text, page, source, config.profile, rows.length + index + 1);
+          if (job) jobs.push({ ...job, evidenceUrl: row.url, evidenceLocator: row.locator, attachmentNotes: row.notes, attachmentIncomplete: row.incomplete });
+        }
+        for (const clue of parsed.clues.slice(0, 8).filter(clue => !parsed.rows.some(row => row.url === clue.url))) {
+          const job = jobFrom(clue.text, { ...page, title: `${page.title}｜${clue.locator}`, text: clue.text }, source, config.profile);
           if (job) jobs.push(job);
         }
-        if (!attachmentFailure) observedPages.push(page.url);
+        if (parsed.complete) observedPages.push(page.url);
       } catch (error) { coverage.warnings.push(`有公告读取失败：${error.message}`); }
       await pause(400);
     }

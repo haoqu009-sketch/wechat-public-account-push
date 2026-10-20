@@ -1,0 +1,5 @@
+# Offline attachment worker versions verified in the local regression suite.
+# Install in a dedicated server virtualenv, not the system Python environment.
+pdfplumber==0.11.9
+pypdfium2==5.14.0
+Pillow==12.3.0
