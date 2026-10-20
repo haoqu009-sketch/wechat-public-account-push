@@ -102,8 +102,17 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   if (/全日制/.test(row)) issues.push('原文有全日制要求，个人培养方式尚未提供');
   if (/本科(?:阶段|所学)?专业|本科(?:学历|院校).{0,8}(?:须|需|要求)|本科.{0,15}(?:须|需|要求).{0,10}专业/.test(row)) issues.push('原文限制本科专业或学历，个人本科条件尚未提供');
   if (/专业代码|[AB]\d{5}|10\d{4}/.test(job.specialtyRequirement || '')) issues.push('岗位有专业代码要求，需与本人毕业证专业及代码逐项比对');
-  const residency = row.match(/[^；。;]{0,50}(?:规培|规范化培训)[^；。;]{0,90}/)?.[0];
-  if (residency) { add('residency', /优先/.test(residency) ? '规培完成者优先，非直接排除条件' : '原文有规培要求', residency); if (!/优先/.test(residency) && /规培专业|培训专业|培训.{0,12}(?:方向|专业须|专业需|专业应)/.test(residency)) issues.push('规培要求涉及专业方向，需与本人合格证专业一致'); }
+  const residency = row.match(/[^；。;]{0,50}(?:规培|住培|规范化培训)[^；。;]{0,90}/)?.[0];
+  if (residency) {
+    add('residency', /优先/.test(residency) ? '规培完成者优先，非直接排除条件' : '原文有规培要求', residency);
+    if (!/优先/.test(residency) && /规培专业|住培专业|培训专业|培训.{0,12}(?:方向|专业须|专业需|专业应)/.test(residency)) {
+      const named = residency.match(/(?:规培|住培|培训)专业\s*(?:要求)?\s*(?:[:：]|(?:必须|须|应|需)?为)\s*([\p{Script=Han}]{2,20})(?=[，,。；;\s]|$)/u)?.[1];
+      const exact = named && !/或|和|及|与|一致|相关|不限|证|取得|合格|完成|符合/.test(named)
+        && named === profile.residencySpecialty && profile.residencyCompleted === true;
+      if (exact) add('residencySpecialty', '原文规培专业与已提供的合格证专业名称一致', residency);
+      else issues.push('规培要求涉及专业方向，尚未确认与本人合格证专业一致；不自动认定近义名称等同');
+    }
+  }
   const certificate = row.match(/[^；。;]{0,35}(?:执业医师|医师资格|医师执业)[^；。;]{0,80}/)?.[0];
   if (certificate) { add('certificate', '原文有医师资格或执业要求', certificate); if (/执业注册|执业证/.test(certificate)) issues.push('已有医师资格证不等于已完成执业注册，需核对注册要求'); }
   const rowAge = row.split(/[。；;]/).find(value => /周岁|年龄/.test(value) && !/放宽|博士后|高级职称/.test(value));
