@@ -115,7 +115,7 @@ export async function collectSource(source, config, today, options = {}) {
       const response = await request(url, hosts);
       const html = decodeHtml(response.bytes, response.type);
       if (!/<(?:html|a|body)\b/i.test(html)) throw new Error('来源返回的不是可解析网页');
-      if (i === 0 && source.verifyName) {
+      if ((i === 0 || directory) && source.verifyName) {
         const identity = pageData(html, response.url, source);
         if (!`${identity.title} ${identity.text} ${html}`.includes(source.verifyName)) throw new Error('官网名称未通过核验，请人工核对地址');
       }
@@ -137,6 +137,7 @@ export async function collectSource(source, config, today, options = {}) {
       await pause(400);
     }
     if (directory && !readableIndexes) throw new Error(coverage.warnings[0] || '官方目录没有读取成功的入口');
+    if (directory && !articles.size) coverage.warnings.push('目录可读取，但本轮未识别到可解析招聘公告；不等同于完整覆盖或没有岗位');
     if (!discoveredIndex && !articles.size) throw new Error('未找到可解析的招聘入口；请核对栏目地址或是否需要脚本渲染');
     let attempted = 0;
     const articleLinks = directory ? selectDirectoryNotices([...articles.values()], today, options.now ?? Date.now()) : [...articles.values()].slice(0, 12);

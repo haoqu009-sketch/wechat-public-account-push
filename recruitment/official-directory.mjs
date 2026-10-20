@@ -11,6 +11,7 @@ export function directoryNotices(html, base, hosts) {
     const title = clean(anchor.attr('title') || anchor.text());
     if (!url || url === base || classifyLink({ title }) !== 'article'
       || /\.(?:xlsx?|docx?|pdf|zip|png|jpe?g)(?:\?|$)/i.test(url)
+      || /\.(?:xlsx?|docx?|pdf|zip|png|jpe?g)$/i.test(title)
       || /进入面试|面试人员|面试资格|政策性加分|资格审核|笔试公告|操作指[南导]|考试须知|报名操作|招聘会|培训|采购|招标/.test(title)) return;
     if (!found.has(url)) found.set(url, { url, title });
   });

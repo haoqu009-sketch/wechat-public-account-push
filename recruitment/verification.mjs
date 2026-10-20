@@ -78,9 +78,19 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   else issues.push('原文仅写专技或科室名称，尚未明确医师/技师职业类别');
   if (job.specialtyRequirement) {
     add('specialty', job.specialtyRequirement, job.specialtyRequirement);
-    if (profile.specialty && !job.specialtyRequirement.includes(profile.specialty) && /医学类|专业类|研究生.*专业/.test(job.specialtyRequirement)) issues.push('专业按宽口径医学类别列示，需用本人研究生专业名称或代码确认归属');
+    // A matching undergraduate specialty cannot prove a graduate specialty.
+    const graduateSpecialty = job.specialtyRequirement.match(/研究生\s*[:：]\s*([^]+?)(?=本科\s*[:：]|$)/)?.[1] || job.specialtyRequirement;
+    if (profile.specialty && !graduateSpecialty.includes(profile.specialty) && !/^\s*(?:专业)?不限\s*$/.test(graduateSpecialty)) {
+      issues.push(/医学类|专业类|研究生.*专业|下设专业/.test(graduateSpecialty)
+        ? '专业按宽口径医学类别列示，需用本人研究生专业名称或代码确认归属'
+        : '原文列示的研究生专业与当前个人专业信息尚不能准确对应，需补充毕业专业全称或代码核对');
+    }
   }
   else issues.push('未取得该岗位专业或专业代码要求');
+  if (common.additionalEligibility) {
+    add('additionalEligibility', '公告有额外引进对象条件', common.additionalEligibility, '公告统一引进条件', page.url);
+    issues.push('公告另有统招、未就业或档案关系等引进条件，个人相关情况及适用范围尚需核对');
+  }
   const degreeTypeText = [job.degreeRequirement, ...row.split('；').filter(value => /^(?:学位类型|学位要求|培养类型|培养方式)[：:]/.test(value))].filter(Boolean).join('；');
   const professionalOnly = /专硕|专业型|专业学位/.test(degreeTypeText) && !/学硕|学术|或|优先/.test(degreeTypeText);
   const academicOnly = /学硕|学术型|学术学位/.test(degreeTypeText) && !/专硕|专业型|专业学位|或|优先/.test(degreeTypeText);

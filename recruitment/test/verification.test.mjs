@@ -89,6 +89,26 @@ test('吉林真实在读排除句式及带排版空格的取证年份仍保留�
   assert.equal(commonConditions(document, config.profile).certificateDeadline.date, '2026-12-31');
 });
 
+test('大兴安岭真实引进对象及可在日期区间报名：确认已知届别日期，保留真实额外条件', () => {
+  const text = '二、引进对象和条件（一）引进对象 引进对象为2025年、2026年、2027年本科及以上毕业生。具体条件为国家统一招生的普通高校毕业生离校时和在择业期内未落实工作单位，其户口、档案、组织关系仍保留在原毕业学校。2027年毕业生应于2027年7月31日前取得报考岗位要求的相应学历、学位及职业资格证书等。三、引进程序和方法（二）报名及网上资格审查 报名采取网上报名方式进行，考生可在2026年9月15日9:00至10月26日17:00登录招聘网站进行报名，逾期不再受理报名事宜。';
+  const document = { ...page, title: '2026年度人才周引才活动公告', text, commonText: text };
+  const job = make(row, document), result = evaluateOfficialJob(job, document, config.profile, '2026-10-20');
+  assert.equal(job.qualificationEvidence.graduationYear, 2027);
+  assert.equal(job.deadline, '2026-10-26');
+  assert.equal(commonConditions(document, config.profile).certificateDeadline.date, '2027-07-31');
+  assert.ok(!result.issues.some(issue => /2027届是否可报|未取得明确报名/.test(issue)));
+  assert.ok(result.evidence.some(proof => proof.field === 'additionalEligibility' && /未落实工作单位/.test(proof.quote)));
+  assert.match(result.issues.join('；'), /档案关系/);
+});
+
+test('专业名称不能凭影像近义猜符合，也不能用本科匹配冒充研究生专业匹配', () => {
+  for (const specialty of ['影像医学与核医学', '本科：医学影像学研究生：影像医学与核医学']) {
+    const job = make(row.replace('医学影像学', specialty));
+    const result = evaluateOfficialJob(job, page, config.profile, today);
+    assert.equal(result.state, 'partial'); assert.match(result.issues.join('；'), /研究生专业/);
+  }
+});
+
 test('已毕业要求与2027届冲突给出具体证据，不把应往届误解为未毕业也能报', () => {
   const document = { ...page, title: '2026年招聘公告', text: '招聘对象：普通高等院校2026年应届毕业生和社会人员。报考人员须于2026年10月15日前取得相应毕业证书、学位证书。' };
   const result = evaluateOfficialJob(make(row, document), document, config.profile, today);

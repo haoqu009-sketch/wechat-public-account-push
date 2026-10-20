@@ -31,7 +31,7 @@ export function cohortEvidence(text, year) {
 export function commonConditions(page, profile) {
   // pageData supplies table-free text: another job's row must not become a global rule.
   const text = clean(page.commonText ?? page.text), sentences = parts(text);
-  const section = sectionText(text, '招聘对象|招聘范围|招考对象|应聘对象');
+  const section = sectionText(text, '招聘对象|招聘范围|招考对象|应聘对象|引进对象|引才对象');
   const conditionSection = sectionText(text, '基本条件|聘用条件|应聘条件|招聘条件|报考条件');
   const scopedRules = parts(conditionSection).filter(value => !localOnly.test(value)
     && /应聘(?:人员|者)|报考(?:人员|者)|招聘对象|须为|必须为/.test(value) && cohortEvidence(value, profile.graduationYear).explicit);
@@ -53,21 +53,24 @@ export function commonConditions(page, profile) {
   const degree = parts(degreeSection).find(value => /硕士|博士|本科/.test(value) && /学历|学位/.test(value) && !/部分岗位|博士后|各岗位|具体岗位|详见|岗位表|优先/.test(value)) || '';
   const application = sentences.find(value => /(?:自|即日|公告发布).{0,25}(?:接受|开始)?报名/.test(value) && /招满即止|额满为止|招满为止/.test(value))
     || sentences.find(value => /招满即止|额满为止|招满为止/.test(value)) || '';
-  const certificateClause = sentences.find(value => !localOnly.test(value) && /毕业证|学历证/.test(value)
+  const certificateClause = sentences.find(value => !localOnly.test(value) && /毕业证|学历证|学历[、及和，\s]*学位/.test(value)
     && /(?:须|应|必须)(?:于|在).{0,35}(?:前|以前)\s*取得/.test(value));
   const certificateDeadline = certificateClause?.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
   const currentCertificate = sentences.find(value => /报名时|报名前/.test(value) && /(?:须|必须|需).{0,20}(?:提供|取得|提交|持有)/.test(value) && /毕业证|学位证|学历证/.test(value));
   const exclusionText = text.match(/(?:不得|不能|不予)(?:报考|应聘|接收)[\s\S]{0,1200}/)?.[0]
     || sentences.find(value => /不得|不能|不接收/.test(value) && /在读(?:的)?非/.test(value)) || '';
   const studentExclusion = exclusionText.match(/(?:普通高校)?在读(?:的)?非\s*(20\d{2})\s*(?:年|届)毕业生/);
-  const registration = sentences.filter(value => /报名|报名表|投递|发送.{0,15}邮箱/.test(value)
+  const registration = sentences.map(value => value.replace(/^(?:[(（][一二三四五六七八九十]+[)）])?\s*报名(?:及|与)(?:网上)?资格审查\s*/, ''))
+    .filter(value => /报名|报名表|投递|发送.{0,15}邮箱/.test(value)
     && !/资格审查|资格复审|打印|准考证|笔试|面试|考察|体检/.test(value)
-    && /(?:于|自|即日起).{0,170}(?:至|到).{0,100}(?:期间|止|报名|投递|发送)/.test(value));
+    && /(?:于|自|在|即日起).{0,170}(?:至|到).{0,100}(?:期间|止|报名|投递|发送)/.test(value));
+  const additionalEligibility = parts(section).find(value => /具体条件为|引进对象|招聘对象/.test(value)
+    && /国家统一招生|未落实(?:过)?工作单位|档案.{0,50}保留/.test(value)) || '';
   return {
     cohort, degree: degree.slice(0, 500), application: application.slice(0, 500),
     certificateDeadline: certificateDeadline ? { date: `${certificateDeadline[1]}-${certificateDeadline[2].padStart(2, '0')}-${certificateDeadline[3].padStart(2, '0')}`, quote: certificateClause.slice(0, 500) } : null,
     currentCertificate: currentCertificate?.slice(0, 500) || '',
-    registration,
+    registration, additionalEligibility: additionalEligibility.slice(0, 500),
     studentExclusion: studentExclusion ? { year: Number(studentExclusion[1]), quote: exclusionText.slice(Math.max(0, studentExclusion.index - 65), studentExclusion.index + 100) } : null,
   };
 }
