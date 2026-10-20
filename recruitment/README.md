@@ -147,4 +147,3 @@ node --use-env-proxy recruitment/github-state.mjs publish
 来源追溯仅请求经配置批准的HTTPS医院/主管部门域名，支持平台显式来源链接和经过人工查证的 `verification.references` 定位。定位链接仍须重新读取、核对单位、年份并唯一匹配岗位行，不能直接当成核验成功。当前没有无人值守全网搜索API、OCR或登录下载；图片、扫描表格、PDF列关系未重建及访问受限必须如实保留阻塞，不能用平台摘要或旧证据冒充当次核验。
 
 个人匹配补充通过受保护环境变量 `RECRUITMENT_PROFILE_JSON` 注入，仅接受 `degreeType`（学硕/专硕）及 `birthYear`。不可提交个人出生年份到公开仓库或公共JSON。仅出生年份且接近年龄界限时保留生日待确认；医师资格证不等于执业注册，规培不自动算工作年限。
-

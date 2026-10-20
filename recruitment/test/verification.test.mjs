@@ -184,14 +184,14 @@ test('高校转载先追溯已定位官方URL，不因转载已能解析就提�
 });
 
 test('个人学硕与出生年份只走保护配置：专硕硬限制不符合，远离年龄边界可确认上限', () => {
-  const profile = resolveProfile(config.profile, '{"degreeType":"学硕","birthYear":2001}');
+  const profile = resolveProfile(config.profile, '{"degreeType":"学硕","birthYear":2000}');
   const document = { ...page, commonText: page.text + '年龄要求：35周岁以下。' };
   const job = make(row.replace('硕士研究生以上', '专业学位硕士'), document);
   const result = evaluateOfficialJob(job, document, profile, today);
   assert.equal(result.state, 'mismatch');
   assert.match(result.issues.join('；'), /学位类型.*不符/);
   assert.match(result.evidence.find(item => item.field === 'age').value, /符合/);
-  assert.ok(!JSON.stringify(result).includes('2001'));
+  assert.ok(!JSON.stringify(result).includes('2000'));
   assert.throws(() => resolveProfile(config.profile, '{"birthYear":100}'));
   assert.throws(() => resolveProfile(config.profile, '{"degreeType":"<script>"}'));
   assert.throws(() => resolveProfile(config.profile, '{"api_key":"private"}'));
@@ -208,9 +208,26 @@ test('接近年龄上限且只有出生年份时不强行判合格；专业理�
 
 test('18周岁以上是年龄下限，不能当成上限误排除正常成年人', () => {
   const document = { ...page, commonText: page.text + '年龄应为18周岁以上，研究生一般不超过43周岁。' };
-  const result = evaluateOfficialJob(make(row, document), document, { ...config.profile, birthYear: 2001 }, today);
+  const result = evaluateOfficialJob(make(row, document), document, { ...config.profile, birthYear: 2000 }, today);
   assert.notEqual(result.state, 'mismatch');
   assert.match(result.evidence.find(item => item.field === 'age').value, /符合/);
   const inclusive = { ...page, commonText: page.text + '年龄一般为18周岁（含）以上、38周岁（含）以下。' };
-  assert.match(evaluateOfficialJob(make(row, inclusive), inclusive, { ...config.profile, birthYear: 2001 }, today).evidence.find(item => item.field === 'age').value, /符合/);
+  assert.match(evaluateOfficialJob(make(row, inclusive), inclusive, { ...config.profile, birthYear: 2000 }, today).evidence.find(item => item.field === 'age').value, /符合/);
+});
+
+test('真实赤峰形态：行内学历学位取得期限优先核对，不能只看宽口径应往届', () => {
+  const document = { ...page, text: '凡符合条件的应往届毕业生可报名，报名时间：2026年9月16日至11月16日。' };
+  const job = make(row + '；其他条件：报考人员学历、学位、医师资格证、住院医师规范化培训合格证取得时间截至2026年8月31日。', document);
+  const result = evaluateOfficialJob(job, document, config.profile, today);
+  assert.equal(result.state, 'mismatch'); assert.match(result.summary, /2026-08-31/);
+  assert.match(result.evidence.find(item => item.field === 'graduationDeadline').locator, /岗位表/);
+});
+
+test('年龄放宽条款不替代基础年龄，公告统一年龄证据链接必须指向正文而非岗位附件', () => {
+  const document = { ...page, commonText: '一般为18周岁（含）以上、38周岁（含）以下。专业技术岗位年龄放宽条件：博士研究生或高级职称可放宽至45周岁。' };
+  const job = { ...make(row, document), evidenceUrl: 'https://hospital.example/jobs.xlsx' };
+  const result = evaluateOfficialJob(job, document, { ...config.profile, birthYear: 2000 }, today);
+  const proof = result.evidence.find(item => item.field === 'age');
+  assert.match(proof.value, /符合/); assert.ok(!proof.quote.includes('放宽')); assert.equal(proof.url, document.url);
+  assert.ok(!result.issues.some(issue => /生日/.test(issue)));
 });

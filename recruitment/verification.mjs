@@ -91,16 +91,19 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   if (residency) { add('residency', /优先/.test(residency) ? '规培完成者优先，非直接排除条件' : '原文有规培要求', residency); if (!/优先/.test(residency) && /规培专业|培训专业|培训.{0,12}(?:方向|专业须|专业需|专业应)/.test(residency)) issues.push('规培要求涉及专业方向，需与本人合格证专业一致'); }
   const certificate = row.match(/[^；。;]{0,35}(?:执业医师|医师资格|医师执业)[^；。;]{0,80}/)?.[0];
   if (certificate) { add('certificate', '原文有医师资格或执业要求', certificate); if (/执业注册|执业证/.test(certificate)) issues.push('已有医师资格证不等于已完成执业注册，需核对注册要求'); }
-  const age = row.match(/[^；。;]{0,25}(?:周岁|年龄)[^；。;]{0,65}/)?.[0]
-    || clean(page.commonText).match(/(?:年龄(?:要求|条件)?[：:]?|年龄应|年龄为)[^。；;]{0,90}(?:周岁|岁)[^。；;]{0,30}/)?.[0];
+  const rowAge = row.split(/[。；;]/).find(value => /周岁|年龄/.test(value) && !/放宽|博士后|高级职称/.test(value));
+  const commonAge = clean(page.commonText).split(/[。；;]/).find(value => /周岁/.test(value)
+    && /年龄|一般为|以下|不超过/.test(value) && !/放宽|博士后|高级职称/.test(value));
+  const age = rowAge || commonAge;
+  const ageLocator = rowAge ? locator : '公告统一年龄条件', ageUrl = rowAge ? rowUrl : page.url;
   if (age) {
     const ageText = age.replace(/[（(]含[）)]/g, '');
     const maximum = Number(ageText.match(/(?:不超过|未满|≤)(\d{2})\s*(?:周)?岁/)?.[1] || ageText.match(/(\d{2})\s*周岁\s*(?:以下|以内|及以下)/)?.[1] || 0);
     const cutoffYear = Number(age.match(/(19\d{2}|20\d{2})\s*年.{0,15}(?:以后|之后|及以后|及之后)出生/)?.[1] || 0);
     const largestAge = Number(today.slice(0, 4)) - profile.birthYear, smallestAge = largestAge - 1;
-    if (profile.birthYear && ((maximum && largestAge < maximum) || (cutoffYear && profile.birthYear > cutoffYear))) add('age', '按已提供的出生年份，可确认符合原文基础年龄上限', age);
-    else if (profile.birthYear && maximum && smallestAge > maximum) { add('age', '按出生年份已超过原文基础年龄上限，例外放宽另核', age); mismatches.push('按已提供的出生年份，超过原文基础年龄上限；尚无适用放宽条件的证据'); }
-    else { add('age', '原文有年龄限制，尚不能确定个人是否符合', age); issues.push(profile.birthYear ? '年龄处于界限附近或条件不够明确，需要完整生日及公告计算口径' : '个人年龄未提供，需对照年龄条件'); }
+    if (profile.birthYear && ((maximum && largestAge < maximum) || (cutoffYear && profile.birthYear > cutoffYear))) add('age', '按已提供的出生年份，可确认符合原文基础年龄上限', age, ageLocator, ageUrl);
+    else if (profile.birthYear && maximum && smallestAge > maximum) { add('age', '按出生年份已超过原文基础年龄上限，例外放宽另核', age, ageLocator, ageUrl); mismatches.push('按已提供的出生年份，超过原文基础年龄上限；尚无适用放宽条件的证据'); }
+    else { add('age', '原文有年龄限制，尚不能确定个人是否符合', age, ageLocator, ageUrl); issues.push(profile.birthYear ? '年龄处于界限附近或条件不够明确，需要完整生日及公告计算口径' : '个人年龄未提供，需对照年龄条件'); }
   }
   const experience = row.match(/[^；。;]{0,35}(?:\d+年|[三五十]年).{0,15}(?:工作|经历)|[^；。;]{0,25}(?:工作经验|工作经历)[^；。;]{0,50}/)?.[0];
   if (experience) { add('experience', '有工作经历要求', experience); issues.push('工作年限尚未提供，需对照原文；规培经历不自动计作工作年限'); }
@@ -112,9 +115,12 @@ export function evaluateOfficialJob(job, page, profile, today, { checkedAt = new
   }
   else if (common.application) add('application', '招满即止；不代表当前仍有空缺', common.application, '公告报名安排', page.url);
   else issues.push('未取得明确报名截止或持续招聘安排');
-  if (common.certificateDeadline) {
-    add('graduationDeadline', `取得毕业证的期限：${common.certificateDeadline.date}`, common.certificateDeadline.quote, '公告统一条件', page.url);
-    if (Number(common.certificateDeadline.date.slice(0, 4)) < profile.graduationYear) mismatches.push(`公告要求${common.certificateDeadline.date}前取得毕业证，与${profile.graduationYear}届尚未毕业的情况冲突`);
+  const rowCertificate = row.split(/[。；;]/).find(value => /学历|学位|毕业证|学历证/.test(value) && /取得时间.{0,4}(?:截至|截止)|(?:须|应)于.{0,35}前取得/.test(value));
+  const rowCertificateDate = rowCertificate && datesIn(rowCertificate, Number(today.slice(0, 4))).at(-1);
+  const certificateDeadline = rowCertificateDate ? { date: rowCertificateDate, quote: rowCertificate } : common.certificateDeadline;
+  if (certificateDeadline) {
+    add('graduationDeadline', `取得学历学位的期限：${certificateDeadline.date}`, certificateDeadline.quote, rowCertificateDate ? locator : '公告统一条件', rowCertificateDate ? rowUrl : page.url);
+    if (Number(certificateDeadline.date.slice(0, 4)) < profile.graduationYear) mismatches.push(`岗位要求${certificateDeadline.date}前取得学历学位，与${profile.graduationYear}届尚未毕业的情况冲突`);
   }
   if (common.studentExclusion && common.studentExclusion.year < profile.graduationYear) {
     const reason = `原文不接收在读非${common.studentExclusion.year}届毕业生，与${profile.graduationYear}届在读情况冲突`;
