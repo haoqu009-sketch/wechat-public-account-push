@@ -72,7 +72,13 @@ test('发现来源部分栏目403不会冒充完整覆盖，但可保留成功�
   };
   const result = await collectDiscovery({ ...source, entryUrls: [source.url, 'https://platform.example/restricted'] }, config, today, { request, robotsText: '', pause: async () => {} });
   assert.equal(result.coverage.ok, true); assert.equal(result.jobs.length, 1);
-  assert.match(result.coverage.warnings.join('；'), /部分发现栏目/);
+  assert.match(result.coverage.warnings.join('；'), /403\/429.*停止/);
+});
+
+test('平台403后停止后续栏目，不通过密集请求、换域或换身份碰运气', async () => {
+  const requests = [];
+  const result = await collectDiscovery({ ...source, entryUrls: [source.url, 'https://platform.example/second'] }, config, today, { robotsText: '', pause: async () => {}, request: async url => { requests.push(url); throw new Error('HTTP 403'); } });
+  assert.equal(result.coverage.ok, false); assert.equal(requests.length, 1);
 });
 
 test('HTTP条件缓存允许304复用，但403失败绝不冒充缓存成功', async t => {

@@ -113,7 +113,10 @@ export async function collectDiscovery(source, config, today, options = {}) {
         const found = discoverCards(response.bytes.toString('utf8'), source);
         if (!found.length) throw new Error('未识别公开招聘列表');
         cards.push(...found); lists++;
-      } catch { coverage.warnings.push('部分发现栏目未完成读取，不代表没有招聘'); }
+      } catch (error) {
+        if (/HTTP 403|HTTP 429/.test(error.message || '')) { coverage.warnings.push('平台访问受限（403/429），已停止本轮后续请求，缓存线索需复核'); break; }
+        coverage.warnings.push('部分发现栏目未完成读取，不代表没有招聘');
+      }
       await pause(700);
     }
     if (!lists) throw new Error('发现渠道未提供可解析的公开列表');
@@ -125,7 +128,10 @@ export async function collectDiscovery(source, config, today, options = {}) {
         const response = await request(url, source.allowedHosts);
         const parsed = parseDiscoveredNotice(response.bytes.toString('utf8'), response.url, cards.filter(card => card.url === url), source, config, today);
         jobs.push(...parsed); coverage.articles++; observedPages.push(url);
-      } catch { coverage.warnings.push('部分平台公告读取失败或受限，未绕过验证'); }
+      } catch (error) {
+        if (/HTTP 403|HTTP 429/.test(error.message || '')) { coverage.warnings.push('平台访问受限（403/429），已停止本轮后续请求，缓存线索需复核'); break; }
+        coverage.warnings.push('部分平台公告读取失败或受限，未绕过验证');
+      }
       await pause(700);
     }
     if (!coverage.articles) throw new Error('发现渠道公告详情均未完成检查');
