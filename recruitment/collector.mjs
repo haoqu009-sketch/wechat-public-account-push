@@ -1,6 +1,9 @@
-import ExcelJS from 'exceljs';
 import { clean, imaging, linksFrom, classifyLink, pageData, jobFrom, safeUrl, daysBetween, extractDeadline } from './core.mjs';
 import { collectPumchSource } from './pumch.mjs';
+import { collectDiscovery } from './discovery.mjs';
+import { spreadsheetRows, pdfText } from './attachments.mjs';
+import { cachedDownload } from './source-cache.mjs';
+export { spreadsheetRows } from './attachments.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -62,29 +65,9 @@ export function decodeHtml(bytes, contentType = '') {
   return new TextDecoder(charset).decode(bytes);
 }
 
-export async function spreadsheetRows(bytes) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(bytes);
-  const result = [];
-  for (const sheet of workbook.worksheets) {
-    if (sheet.rowCount > 10000 || sheet.columnCount > 200) throw new Error('岗位表超过行列上限');
-    const rows = [];
-    sheet.eachRow(row => rows.push(row.values.slice(1).map(value => {
-      if (value && typeof value === 'object') return clean(value.text || value.result || value.richText?.map(item => item.text).join(''));
-      return clean(value);
-    })));
-    const headerIndex = rows.findIndex(row => /岗位|专业/.test(row.join(' ')) && /学历|学位|人数|条件/.test(row.join(' ')));
-    const header = rows[headerIndex] || [];
-    for (const [index, row] of rows.entries()) {
-      if (index === headerIndex || !imaging.test(row.join(' '))) continue;
-      result.push(header.length ? row.map((cell, i) => `${header[i] || `列${i + 1}`}：${cell}`).join('；') : row.join('；'));
-    }
-  }
-  return result;
-}
-
 export async function collectSource(source, config, today, options = {}) {
   const request = options.request || download;
+  if (source.type === 'discovery') return collectDiscovery(source, config, today, { ...options, request });
   if (source.type === 'pumch-api') return collectPumchSource(source, config, today, { ...options, request });
   const pause = options.pause || wait;
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
@@ -108,7 +91,11 @@ export async function collectSource(source, config, today, options = {}) {
         const identity = pageData(html, response.url, source);
         if (!`${identity.title} ${identity.text} ${html}`.includes(source.verifyName)) throw new Error('官网名称未通过核验，请人工核对地址');
       }
-      for (const link of linksFrom(html, response.url, hosts)) {
+      const links = linksFrom(html, response.url, hosts);
+      const next = source.isListing && links.find(link => /^(?:下一页|下页|Next)(?:\s*[>›»])?$/i.test(link.title)
+        && new URL(link.url).hostname === new URL(response.url).hostname);
+      if (next && !indexes.includes(next.url) && indexes.length < 4) indexes.push(next.url);
+      for (const link of links) {
         const kind = classifyLink(link);
         if (kind === 'article') articles.set(link.url, link);
         if (kind === 'index' && !indexes.includes(link.url) && indexes.length < 4) { indexes.push(link.url); discoveredIndex = true; }
@@ -135,10 +122,12 @@ export async function collectSource(source, config, today, options = {}) {
         if (page.published && daysBetween(today, page.published) > config.lookbackDays && !stillOpen) { observedPages.push(page.url); continue; }
         if (!page.published) coverage.warnings.push(`有公告未识别发布日期：${clean(link.title).slice(0, 40)}`);
         const rows = [...page.rows];
+        const pdfClues = [];
         let attachmentFailure = false;
         for (const attachment of page.attachments.slice(0, 3)) {
-          if (attachment.format !== 'xlsx') {
-            coverage.warnings.push('有PDF或旧版XLS附件需人工核对');
+          if (!['xlsx', 'xls', 'pdf'].includes(attachment.format)) {
+            attachmentFailure = true;
+            coverage.warnings.push('有图片或Word附件需人工核对，未自动推断岗位');
             continue;
           }
           try {
@@ -146,7 +135,11 @@ export async function collectSource(source, config, today, options = {}) {
             if (/html/i.test(file.type) || /^\s*(?:<!doctype html|<html)/i.test(file.bytes.subarray(0, 100).toString('utf8'))) {
               throw new Error('附件返回网页或下载验证页，需人工核实');
             }
-            rows.push(...await spreadsheetRows(file.bytes));
+            if (attachment.format === 'pdf') {
+              const pages = await (options.pdfText || pdfText)(file.bytes);
+              for (const [number, text] of pages.entries()) if (imaging.test(text)) pdfClues.push({ text, number: number + 1 });
+              coverage.warnings.push('PDF已提取可选文字，仅作为线索；表格列关系、扫描内容及资格仍需核对');
+            } else rows.push(...await spreadsheetRows(file.bytes));
           } catch (error) { attachmentFailure = true; coverage.warnings.push(`岗位表附件未完成：${error.message}`); }
           await pause(400);
         }
@@ -157,6 +150,10 @@ export async function collectSource(source, config, today, options = {}) {
           if (job) jobs.push(job);
         } else if (page.attachments.length) {
           coverage.warnings.push(`公告附件尚不能确认有无影像岗位：${clean(page.title).slice(0, 40)} ${page.url}`);
+        }
+        for (const clue of pdfClues.slice(0, 8)) {
+          const job = jobFrom(clue.text, { ...page, title: `${page.title}｜PDF第${clue.number}页`, text: clue.text }, source, config.profile);
+          if (job) jobs.push(job);
         }
         if (!attachmentFailure) observedPages.push(page.url);
       } catch (error) { coverage.warnings.push(`有公告读取失败：${error.message}`); }
@@ -170,6 +167,7 @@ export async function collectSource(source, config, today, options = {}) {
 }
 
 export async function collect(config, today, options = {}) {
+  if (options.cacheDir && !options.request) options = { ...options, request: cachedDownload(options.cacheDir, download) };
   const { collectSource: collectOne = collectSource, onSourceComplete, ...sourceOptions } = options;
   const sources = config.sources.filter(item => item.enabled !== false);
   const results = new Array(sources.length);

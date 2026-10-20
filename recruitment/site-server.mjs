@@ -43,7 +43,8 @@ const publicUrl = (value, nullable = false) => {
 // reportId is the trusted publisher's 24-hex identifier. We do not recompute its hash:
 // immutable-file equality enforces ID reuse without coupling to JSON object-key order.
 export function validatePublicReport(report) {
-  exactKeys(report, ROOT_KEYS);
+  // Optional v1 extension: legacy immutable snapshots remain valid without leads.
+  exactKeys(report, Object.hasOwn(report || {}, 'leads') ? [...ROOT_KEYS, 'leads'] : ROOT_KEYS);
   string(report.reportId, 24, true);
   if (report.schemaVersion !== 1 || !/^[a-f0-9]{24}$/.test(report.reportId || '') || !validDate(report.reportDate)) invalid();
   string(report.generatedAt, 24, true);
@@ -55,8 +56,9 @@ export function validatePublicReport(report) {
   for (const key of SUMMARY_KEYS.filter(key => key !== 'limitations')) integer(report.summary[key]);
   stringList(report.summary.limitations, 30, 600);
   if (!Array.isArray(report.jobs) || report.jobs.length > 5000 || !Array.isArray(report.sources) || report.sources.length > 100) invalid();
+  if (report.leads !== undefined && (!Array.isArray(report.leads) || report.leads.length > 300)) invalid();
   const ids = new Set();
-  for (const job of report.jobs) {
+  for (const job of [...report.jobs, ...(report.leads || [])]) {
     exactKeys(job, JOB_KEYS);
     string(job.id, 100, true);
     if (ids.has(job.id)) invalid();
@@ -64,7 +66,8 @@ export function validatePublicReport(report) {
     for (const key of ['title', 'organization']) string(job[key], 160, true);
     string(job.sourceName, 140, true);
     string(job.province, 40);
-    if (!['physician', 'technician'].includes(job.role) || !['priority', 'review'].includes(job.status)
+    const isLead = (report.leads || []).includes(job);
+    if (!(isLead ? job.role === 'clue' && job.status === 'review' && !job.isNew && !job.isReminder : ['physician', 'technician'].includes(job.role)) || !['priority', 'review'].includes(job.status)
       || !['ct', 'mixed', 'other', 'unknown'].includes(job.focusMatch)) invalid();
     for (const key of ['priorityLabel', 'directionLabel', 'degreeRequirement', 'specialtyRequirement']) string(job[key], 240);
     string(job.headcount, 80);

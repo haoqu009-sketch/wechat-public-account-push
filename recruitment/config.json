@@ -14,6 +14,9 @@
   "reminderDays": 3,
   "lookbackDays": 90,
   "sources": [
+    { "id": "gaocai-discovery", "name": "高校人才网（聚合发现）", "province": "全国", "type": "discovery", "provider": "gaocai", "sourceKind": "aggregator", "isRepost": true, "url": "https://www.gaoxiaojob.com/hotword/giyk639104", "entryUrls": ["https://www.gaoxiaojob.com/hotword/giyk639104", "https://www.gaoxiaojob.com/hotword/ldhw497528", "https://www.gaoxiaojob.com/hotword/htkn079126"], "maxDetails": 16, "allowedHosts": ["www.gaoxiaojob.com"] },
+    { "id": "jobmd-discovery", "name": "丁香人才（聚合发现）", "province": "全国", "type": "discovery", "provider": "jobmd", "sourceKind": "aggregator", "isRepost": true, "url": "https://www.jobmd.cn/jobnotice", "maxDetails": 16, "allowedHosts": ["www.jobmd.cn"] },
+    { "id": "national-health-recruitment", "name": "国家卫健委人才中心（官方集中招聘）", "province": "全国", "sourceKind": "official-publisher", "isRepost": true, "url": "https://www.21wecan.com/wsrcw/wzzp/rczp.shtml", "isListing": true, "verifyName": "国家卫生健康委人才交流服务中心", "allowedHosts": ["www.21wecan.com", "www.zryhyy.com.cn", "www.bme.org.cn", "cnilas.org", "www.cicams.ac.cn", "www.imicams.ac.cn", "www.irm-cams.ac.cn"] },
     { "id": "hrbmu", "name": "哈尔滨医科大学", "verifyName": "哈尔滨医科大学", "province": "黑龙江", "url": "https://hr.hrbmu.edu.cn/index/tzgg.htm", "isListing": true, "allowedHosts": ["hr.hrbmu.edu.cn", "www.hrbmu.edu.cn"] },
     { "id": "hmu1", "name": "哈尔滨医科大学附属第一医院", "verifyName": "哈尔滨医科大学附属第一医院", "province": "黑龙江", "url": "https://www.54dr.org.cn/talentlist.html", "isListing": true, "allowedHosts": ["www.54dr.org.cn", "54dr.org.cn", "hr.hrbmu.edu.cn"] },
     { "id": "hmu2", "name": "哈尔滨医科大学附属第二医院", "verifyName": "哈尔滨医科大学附属第二医院", "province": "黑龙江", "url": "https://www.hrbmush.edu.cn/xxgk/rczp.htm", "isListing": true, "allowedHosts": ["www.hrbmush.edu.cn", "hr.hrbmu.edu.cn", "www.hrbmu.edu.cn"] },

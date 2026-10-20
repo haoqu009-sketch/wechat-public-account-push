@@ -7,7 +7,7 @@
     <meta name="description" content="医学影像官方招聘信息速览，查看岗位条件、报名截止与采集来源状态。">
     <title>医学影像招聘速览</title>
     <link rel="stylesheet" href="./styles.css">
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=multi-source-1"></script>
   </head>
   <body>
     <a class="skip-link" href="#job-results">跳到岗位列表</a>
@@ -15,7 +15,7 @@
       <header class="page-header">
         <div class="heading-row">
           <div>
-            <p class="eyebrow"><span class="brand-mark" aria-hidden="true">＋</span> 官方来源 · 影像职业观察</p>
+            <p class="eyebrow"><span class="brand-mark" aria-hidden="true">＋</span> 多源发现 · 影像职业观察</p>
             <h1>医学影像招聘速览</h1>
           </div>
           <button class="refresh-button" id="refresh" type="button"><span aria-hidden="true">↻</span><span>刷新</span></button>
@@ -29,7 +29,7 @@
 
       <section class="stats" aria-label="报告概览">
         <div class="stat"><span class="stat-label">当前岗位</span><strong id="active-count">—</strong><span class="stat-note">含截止尚待核实的线索</span></div>
-        <div class="stat"><span class="stat-label">本轮候选</span><strong id="new-count">—</strong><span class="stat-note">候选不等于今日新发布</span></div>
+        <div class="stat"><span class="stat-label">待核实线索</span><strong id="new-count">—</strong><span class="stat-note">未计入左侧岗位数</span></div>
         <div class="stat"><span class="stat-label">3日内截止</span><strong id="closing-count">—</strong><span class="stat-note">按北京时间今日计算</span></div>
       </section>
 
@@ -44,10 +44,11 @@
 
       <section class="filters" aria-label="筛选岗位">
         <div class="tabs" role="tablist" aria-label="岗位类别">
-          <button type="button" role="tab" class="tab active" id="tab-all" aria-selected="true" aria-controls="job-results" data-tab="all">全部 <span id="tab-count-all">—</span></button>
+          <button type="button" role="tab" class="tab active" id="tab-all" aria-selected="true" aria-controls="job-results" data-tab="all">岗位 <span id="tab-count-all">—</span></button>
           <button type="button" role="tab" class="tab" id="tab-physician" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="physician">影像医师 <span id="tab-count-physician">—</span></button>
           <button type="button" role="tab" class="tab" id="tab-technician" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="technician">技师候补 <span id="tab-count-technician">—</span></button>
           <button type="button" role="tab" class="tab" id="tab-closing" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="closing">临近截止 <span id="tab-count-closing">—</span></button>
+          <button type="button" role="tab" class="tab" id="tab-clue" aria-selected="false" aria-controls="job-results" tabindex="-1" data-tab="clue">待核实线索 <span id="tab-count-clue">—</span></button>
         </div>
         <div class="quick-filter">
           <label class="search-field"><span>关键词</span><input id="search" type="search" placeholder="搜索医院、岗位或专业" autocomplete="off" enterkeyhint="search"></label>
@@ -64,6 +65,7 @@
 
       <section id="job-results" class="results" role="tabpanel" aria-labelledby="tab-all" tabindex="0" aria-busy="true">
         <div class="results-heading"><h2>岗位信息</h2><p id="result-count" aria-live="polite" aria-atomic="true">正在加载真实采集数据…</p></div>
+        <p class="source-explanation" id="lead-summary"></p>
         <div id="loading" class="loading-state" role="status"><span class="loading-dot" aria-hidden="true"></span><p>正在读取岗位与来源状态</p></div>
         <div id="empty-state" class="empty-state" hidden><span class="empty-icon" aria-hidden="true">⌕</span><h3 id="empty-title"></h3><p id="empty-description"></p><button type="button" class="secondary-button" id="reset-filters" hidden>清除筛选</button><button type="button" class="secondary-button" id="retry" hidden>重新读取</button></div>
         <ol id="jobs" class="job-list"></ol>

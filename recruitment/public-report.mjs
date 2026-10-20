@@ -64,7 +64,7 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
     return published ? { ...job, published } : job;
   }).filter(job => job && typeof job === 'object' && typeof job.id === 'string'
     && typeof job.title === 'string' && typeof job.organization === 'string'
-    && ['physician', 'technician'].includes(job.role) && publicUrl(job.url, hosts)
+    && ['physician', 'technician', 'clue'].includes(job.role) && publicUrl(job.url, hosts)
     && (job.deadline == null || date(job.deadline))
     && (!date(job.published) || (daysBetween(reportDate, job.published) >= 0
       && (daysBetween(reportDate, job.published) <= lookbackDays || (date(job.deadline) && job.deadline >= reportDate)))));
@@ -75,7 +75,7 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
   }, reportDate);
   const newIds = new Set([...(digest.physicians || []), ...(digest.technicians || [])].map(job => job.id));
   const reminderIds = new Set((digest.reminders || []).map(job => job.id));
-  const publicJobs = rankJobs([...complete.physicians, ...complete.technicians], config, reportDate).map(job => {
+  const project = job => {
     const sourceName = text(job.sourceName || job.organization, 140);
     const collectedAt = date(job.collectedAt);
     const sourceHealthy = sourceHealth.get(sourceName) === true;
@@ -89,11 +89,15 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
       matches: strings(job.matches), requirements: strings(job.requirements), structured: job.structured === true,
       url: publicUrl(job.url, hosts), published: date(job.published), deadline: date(job.deadline), collectedAt,
       sourceHealthy, stale: !sourceHealthy || collectedAt !== reportDate,
-      isNew: newIds.has(job.id), isReminder: reminderIds.has(job.id),
+      isNew: job.role !== 'clue' && newIds.has(job.id), isReminder: job.role !== 'clue' && reminderIds.has(job.id),
     };
-  });
+  };
+  const publicJobs = rankJobs([...complete.physicians, ...complete.technicians], config, reportDate).map(project);
+  const leads = rankJobs(candidates.filter(job => job.role === 'clue' || job.sourceKind === 'aggregator'), config, reportDate)
+    .filter(job => job.role === 'clue').slice(0, 300).map(project);
   const sourceSuccessCount = sources.filter(source => source.ok).length;
-  const limitations = ['仅覆盖已配置且可读取的官方来源，未收录不代表没有招聘；具体资格与报名状态以官方公告为准。'];
+  const limitations = ['仅覆盖已配置且可读取的官方及聚合来源，未收录不代表没有招聘；具体资格与报名状态以官方公告为准。'];
+  if (leads.length) limitations.push(`另列${leads.length}条待核实招聘线索，不计入医师或技师岗位；平台转载不代表官方已核验或确认可报名。`);
   if (sourceSuccessCount < sources.length) limitations.push(`${sources.length - sourceSuccessCount}个来源本次未完成检查，来源覆盖不完整。`);
   if (sources.some(source => source.warnings.length)) limitations.push('部分公告或附件尚待核实，请查看来源状态并核对原文。');
   if (publicJobs.some(job => job.stale)) limitations.push('部分岗位来自此前采集记录或本次不可用来源，请核对采集日期及最新公告。');
@@ -105,6 +109,6 @@ export function createPublicReport({ jobs, digest, coverage, config, generatedAt
     reminderCount: publicJobs.filter(job => job.isReminder).length,
     sourceSuccessCount, sourceTotalCount: sources.length, limitations,
   };
-  const content = { schemaVersion: 1, reportDate, generatedAt: generated, summary, jobs: publicJobs, sources };
-  return { schemaVersion: 1, reportId: hash(JSON.stringify(content)), reportDate, generatedAt: generated, summary, jobs: publicJobs, sources };
+  const content = { schemaVersion: 1, reportDate, generatedAt: generated, summary, jobs: publicJobs, sources, leads };
+  return { schemaVersion: 1, reportId: hash(JSON.stringify(content)), reportDate, generatedAt: generated, summary, jobs: publicJobs, sources, leads };
 }

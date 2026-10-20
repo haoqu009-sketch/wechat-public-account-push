@@ -143,8 +143,8 @@ export function pageData(html, url, source) {
   const hosts = source.allowedHosts || [new URL(source.url).hostname];
   const attachments = linksFrom(html, url, hosts).flatMap(link => {
     // University CMS downloads often use download.jsp while the anchor retains the file name.
-    const format = (link.url.match(/\.(xlsx?|pdf)(?:\?|$)/i)?.[1]
-      || link.title.match(/\.(xlsx?|pdf)$/i)?.[1])?.toLowerCase();
+    const format = (link.url.match(/\.(xlsx?|pdf|docx?|png|jpe?g)(?:\?|$)/i)?.[1]
+      || link.title.match(/\.(xlsx?|pdf|docx?|png|jpe?g)$/i)?.[1])?.toLowerCase();
     return format ? [{ ...link, format }] : [];
   });
   return { title, text, published, rows, attachments, url };
@@ -194,6 +194,17 @@ function negatesCohort(text, year) {
   return new RegExp(`(?:不(?:接受|接收|招收|招录|招聘|招|含|包括)?|拒绝|排除|不面向|暂不(?:接受|接收|招收|招录|招)?)\\s*${target}|${target}(?:毕业生)?\\s*(?:不得|不可|不能|不予|不符合|不接收|不接受|不招收|暂不|除外)|除\\s*${target}(?:毕业生)?\\s*以?外`).test(text);
 }
 
+function includesCohortRange(text, year) {
+  for (const match of text.matchAll(/(20\d{2})\s*届\s*(?:及|和)?\s*(以后|之后|以上|以前|之前|以下)/g)) {
+    const start = Number(match[1]);
+    if (/以后|之后|以上/.test(match[2]) ? year >= start : year <= start) return true;
+  }
+  for (const match of text.matchAll(/(20\d{2})\s*(?:届|年)?\s*[-—~～至到]\s*(20\d{2})\s*(?:届|年)/g)) {
+    if (year >= Number(match[1]) && year <= Number(match[2])) return true;
+  }
+  return false;
+}
+
 const onlyDoctorate = text => /(?:仅限|仅招|只招|限招)\s*博士/.test(text);
 
 function rowFields(text) {
@@ -215,8 +226,9 @@ function clinicalRole(text, title, structured) {
   const department = values(/科室|^部门$/);
   const type = values(/岗位类型|岗位类别|职位类别|招聘类别/);
   const doctor = /医师|医生/.test(position);
-  const technician = /技师|放射师|技术岗|影像技术人员/.test(position);
-  const clinicalMedical = /医疗岗/.test(position) && imaging.test(department) && /(?:执业医师|医师(?:资格|执业))/.test(text);
+  const technician = /技师|放射师|影像技术人员/.test(position) || /^(?:影像|放射|医学影像)?技术岗(?:\d+)?$/.test(position);
+  const clinicalMedical = /医疗岗|专技岗位|专业技术岗|卫生专业技术人员/.test(position)
+    && imaging.test(`${department} ${values(/专业/)}`) && /(?:执业医师|医师(?:资格|执业))/.test(text);
   if (/科研|研究助理|博士后|教师|实验员|行政|工程师|研究员/.test(`${position} ${type}`)) return null;
   if (entries.some(([key]) => /导师|研究方向/.test(key)) && !doctor && !technician) return null;
   if (!structured && /科研|博士后|研究助理|教师|研究员/.test(title)) return null;
@@ -267,7 +279,7 @@ function recruitmentCycle(title) {
 
 export function assessJobQuality(job, config, today = chinaDate()) {
   const reasons = [], targetYear = config.profile.graduationYear;
-  const role = clinicalRole(job.conditionExcerpt || '', job.announcementTitle || job.title, job.structured);
+  const role = job.sourceKind === 'aggregator' ? 'clue' : clinicalRole(job.conditionExcerpt || '', job.announcementTitle || job.title, job.structured);
   // Recheck explicit contradictions in cached records as well as newly parsed rows.
   // This only removes confidence; it never invents new qualification evidence.
   const rowConditions = job.structured ? job.conditionExcerpt || '' : '';
@@ -314,7 +326,7 @@ export function assessJobQuality(job, config, today = chinaDate()) {
   if (excluded) reasons.push(`已排除：${excluded}`);
   return {
     ...job, role: role || job.role, degreeRequirement, excluded, qualificationEvidence: evidence, status: priority ? 'priority' : 'review', qualityScore: score, qualityReasons: reasons,
-    priorityLabel: priority ? (job.focusMatch === 'ct' ? '优先关注·CT岗位' : '岗位条件较明确·仍需核对资格') : '待核实线索',
+    priorityLabel: job.sourceKind === 'aggregator' ? '平台转载·待核实' : priority ? (job.focusMatch === 'ct' ? '优先关注·CT岗位' : '岗位条件较明确·仍需核对资格') : '待核实线索',
   };
 }
 
@@ -340,12 +352,13 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   const doctorateOnly = structured && (degreeConstraints.some(constraint => constraint?.doctorateOnly)
     || onlyDoctorate(conditions));
   const cohorts = [...conditions.matchAll(/(20\d{2})\s*(?:届|年(?:应届)?毕业生)/g)].map(m => Number(m[1]));
-  const unrestrictedCohort = /届别不限|毕业(?:年份|年度|届别|年限)不限|不限(?:毕业)?(?:年份|届别)|应往届|往届(?:毕业生)?(?:均可|可报|不限)|(?:接受|含)往届/.test(conditions);
+  const rangeCohort = includesCohortRange(conditions, profile.graduationYear);
+  const unrestrictedCohort = rangeCohort || /届别不限|毕业(?:年份|年度|届别|年限)不限|不限(?:毕业)?(?:年份|届别)|应往届|往届(?:毕业生)?(?:均可|可报|不限)|(?:接受|含)往届/.test(conditions);
   const targetCohort = `${profile.graduationYear}\\s*(?:届|年(?:应届)?毕业生)`;
   const targetNegated = negatesCohort(conditions, profile.graduationYear);
   const wrongCohort = targetNegated || (cohorts.length > 0 && !cohorts.includes(profile.graduationYear) && !unrestrictedCohort);
   const doctorateScopedCohort = new RegExp(`${targetCohort}(?:毕业生)?\\s*(?:的)?\\s*博士`).test(conditions);
-  const cohortConfirmed = structured && cohorts.includes(profile.graduationYear) && !targetNegated && !doctorateScopedCohort;
+  const cohortConfirmed = structured && (cohorts.includes(profile.graduationYear) || rangeCohort) && !targetNegated && !doctorateScopedCohort;
   const directionText = structured ? fields.filter(([key]) => key && !/代码|编号|单位|医院|人数|计划数|招聘数量|学历|学位/.test(key)).map(([, value]) => value).join(' ') || text : text;
   const direction = positionDirection(directionText, structured);
   const requirements = [];
@@ -359,20 +372,30 @@ export function jobFrom(text, page, source, profile, rowNumber = 0) {
   if (/工作经验|工作经历|从业经验/.test(text)) requirements.push('核对工作经历要求');
   if (role === 'technician') requirements.push('核对是否接受医学影像学及技师资格要求');
   requirements.push('核对学硕/专硕、专业代码及其他资格条件');
-  const deadline = extractDeadline(text, Number((page.published || chinaDate()).slice(0, 4)))
-    || extractDeadline(page.text, Number((page.published || chinaDate()).slice(0, 4)));
+  const deadlineYear = Number((page.published || chinaDate()).slice(0, 4));
+  // A global date is inherited only when all labeled registration deadlines agree.
+  // Multiple batches with different dates require a row-specific date or human review.
+  const pageDeadlines = [...(page.text || '').matchAll(/报名\s*(?:截止(?:时间|日期)?|时间|日期)|截止(?:报名|时间|日期)|报名.{0,8}?截至/g)]
+    .map(match => extractDeadline(page.text.slice(match.index), deadlineYear)).filter(Boolean);
+  const deadline = extractDeadline(text, deadlineYear)
+    || (new Set(pageDeadlines).size === 1 ? pageDeadlines[0] : null);
+  if (!deadline && new Set(pageDeadlines).size > 1) requirements.push('公告存在多批次报名日期，当前岗位截止时间需单独核对');
   const matches = [];
   if (masters) matches.push('岗位学历要求包含硕士');
   if (cohortConfirmed) matches.push(`岗位明确列出${profile.graduationYear}届`);
   if (direction.focusMatch === 'ct' || direction.focusMatch === 'mixed') matches.push('具体岗位涉及CT');
   const code = fields.find(([key]) => /岗位代码|岗位编号|职位代码|职位编号/.test(key))?.[1];
-  const identity = code || `${title}#${fields.filter(([key]) => /专业/.test(key)).map(([, value]) => value).join('|')}`;
+  const originalIdentity = code || `${title}#${fields.filter(([key]) => /专业/.test(key)).map(([, value]) => value).join('|')}`;
+  const departmentIdentity = field(/科室|^部门$/);
+  const identity = code || `${originalIdentity}${departmentIdentity ? `#${departmentIdentity}` : ''}`;
   const id = hash(`${canonicalJobUrl(page.url)}#${structured ? `${employer ? `${employer.replace(/\s+/g, '')}#` : ''}${identity}` : 'announcement'}`);
-  const oldId = hash(`${page.url}#${structured ? identity : 'announcement'}`);
+  const oldId = hash(`${page.url}#${structured ? originalIdentity : 'announcement'}`);
+  const priorQualifiedId = hash(`${canonicalJobUrl(page.url)}#${structured ? `${employer ? `${employer.replace(/\s+/g, '')}#` : ''}${originalIdentity}` : 'announcement'}`);
+  const legacyIds = [...new Set([oldId, priorQualifiedId])].filter(value => value !== id);
   const fingerprint = hash(JSON.stringify({ text: clean(text), deadline, title: page.title }));
   return assessJobQuality({
     id, fingerprint, title: structured ? title : page.title,
-    ...(oldId !== id ? { legacyIds: [oldId] } : {}),
+    ...(legacyIds.length ? { legacyIds } : {}),
     organization: employer || repostEmployer(page.title, source) || (/医院/.test(source.name) ? source.name : `${source.name}发布（单位见公告）`),
     announcementTitle: publicExcerpt(page.title, 200), announcementText: publicExcerpt(page.text, 1200),
     sourceName: source.name, degreeRequirement, specialtyRequirement: field(/专业/),

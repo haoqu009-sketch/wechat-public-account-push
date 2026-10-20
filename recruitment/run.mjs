@@ -43,6 +43,7 @@ export async function run(args = process.argv.slice(2), env = process.env, servi
   if (!dryRun && !refreshOnly) wechat = readWechatConfig(env);
   if (!sendOnly) {
     const { jobs, coverage, observedPages } = await (services.collect || collect)(config, today, {
+      ...(!dryRun ? { cacheDir: path.join(stateDir, 'source-cache') } : {}),
       onSourceComplete: result => console.log(`来源检查 ${result.completed}/${result.total}：${result.name}（${result.ok ? '已读取' : '未完成'}，影像线索${result.jobCount}条）`),
     });
     const refreshed = new Set(observedPages);

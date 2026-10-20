@@ -39,7 +39,7 @@ test('公共报告采用显式白名单，不包含收件人、密钥、内部�
     config: { ...config, APP_SECRET: secret, sources: [{ ...source, apiKey: secret }] },
     coverage: [{ ...coverage[0], error: secret, token: secret, warnings: [`unrecognized ${secret}`] }],
   });
-  assert.deepEqual(Object.keys(result), ['schemaVersion', 'reportId', 'reportDate', 'generatedAt', 'summary', 'jobs', 'sources']);
+  assert.deepEqual(Object.keys(result), ['schemaVersion', 'reportId', 'reportDate', 'generatedAt', 'summary', 'jobs', 'sources', 'leads']);
   assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
   for (const key of ['fingerprint', 'legacyIds', 'qualificationEvidence', 'openId', 'token', 'secret', 'recipients', 'pending', 'unlistedField']) assert.equal(Object.hasOwn(result.jobs[0], key), false);
   assert.equal(result.jobs[0].focusMatch, 'ct');

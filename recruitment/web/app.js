@@ -41,9 +41,10 @@ function validateReport(report) {
   if (!report || report.schemaVersion !== 1 || !/^[a-f0-9]{24}$/.test(report.reportId || '')
     || !validDate(report.reportDate) || !Number.isFinite(Date.parse(report.generatedAt))
     || !report.summary || !Array.isArray(report.summary.limitations) || !Array.isArray(report.jobs) || !Array.isArray(report.sources)) throw new Error('报告结构不完整');
-  if (report.jobs.some(job => !job || typeof job.id !== 'string' || typeof job.title !== 'string'
+  if (report.leads !== undefined && !Array.isArray(report.leads)) throw new Error('招聘线索结构异常');
+  if ([...report.jobs, ...(report.leads || [])].some(job => !job || typeof job.id !== 'string' || typeof job.title !== 'string'
     || typeof job.organization !== 'string' || typeof job.province !== 'string'
-    || !['physician', 'technician'].includes(job.role) || !['priority', 'review'].includes(job.status)
+    || !['physician', 'technician', 'clue'].includes(job.role) || !['priority', 'review'].includes(job.status)
     || !Array.isArray(job.qualityReasons) || !Array.isArray(job.requirements)
     || (job.deadline !== null && !validDate(job.deadline)))) throw new Error('岗位数据结构异常');
   if (report.sources.some(source => !source || typeof source.name !== 'string' || typeof source.ok !== 'boolean'
@@ -121,13 +122,16 @@ function renderMetadata(report) {
   $('report-id').textContent = `报告编号 ${report.reportId}`;
 
   const today = beijingDate();
-  state.jobs = report.jobs.filter(job => !validDate(job.deadline) || job.deadline >= today).map((job, index) => ({ ...job, originalIndex: index }));
+  state.jobs = [...report.jobs, ...(report.leads || [])].filter(job => !validDate(job.deadline) || job.deadline >= today).map((job, index) => ({ ...job, originalIndex: index }));
   const count = role => state.jobs.filter(job => job.role === role).length;
-  const closing = state.jobs.filter(isClosing).length;
-  $('active-count').textContent = String(state.jobs.length);
-  $('new-count').textContent = String(state.jobs.filter(job => job.isNew === true).length);
+  const clinical = state.jobs.filter(job => job.role !== 'clue'), leads = count('clue');
+  const closing = clinical.filter(isClosing).length;
+  $('active-count').textContent = String(clinical.length);
+  $('new-count').textContent = String(leads);
   $('closing-count').textContent = String(closing);
-  $('tab-count-all').textContent = String(state.jobs.length);
+  $('tab-count-all').textContent = String(clinical.length);
+  $('tab-count-clue').textContent = String(leads);
+  $('lead-summary').textContent = leads ? `另有 ${leads} 条待核实招聘线索，可切换上方标签查看。转载、职业类型不明或PDF文字线索均不计入岗位数，请核对原始岗位表。` : '公开岗位与待核实线索分别统计，资格及报名状态以官方最新公告为准。';
   $('tab-count-physician').textContent = String(count('physician'));
   $('tab-count-technician').textContent = String(count('technician'));
   $('tab-count-closing').textContent = String(closing);
@@ -170,7 +174,7 @@ function renderCard(job) {
   if (job.stale || job.sourceHealthy === false) badges.append(element('span', 'badge badge-stale', '缓存待复核'));
   top.append(badges, element('span', 'province', job.province || '地区待核实'));
   card.append(top, element('h3', 'job-title', job.title), element('p', 'organization', job.organization));
-  card.append(element('p', 'direction', `${job.role === 'physician' ? '影像医师' : '技师候补'} · ${job.directionLabel || '具体方向待核对'}`));
+  card.append(element('p', 'direction', `${job.role === 'physician' ? '影像医师' : job.role === 'technician' ? '技师候补' : '未核验招聘线索'} · ${job.directionLabel || '具体方向待核对'}`));
   const facts = element('dl', 'job-facts');
   facts.append(fact('学历 / 学位', job.degreeRequirement), fact('专业要求', job.specialtyRequirement, 'fact-specialty'), fact('人数', job.headcount, 'fact-headcount'));
   card.append(facts);
@@ -194,7 +198,7 @@ function renderCard(job) {
   dates.append(fact('发布日期', dateLabel(job.published)), fact('采集日期', dateLabel(job.collectedAt)));
   body.append(dates, element('p', 'source-note', `采集来源：${job.sourceName || '待核实'}${job.sourceHealthy ? '' : ' · 本次未完成检查，需复核最新公告'}`));
   details.append(body);
-  bottom.append(details, link('查看官方原文 ↗', job.url, 'official-link'));
+  bottom.append(details, link(job.role === 'clue' ? '查看来源原文 ↗' : '查看官方原文 ↗', job.url, 'official-link'));
   card.append(bottom);
   item.append(card);
   return item;
@@ -205,6 +209,7 @@ function filteredJobs() {
   const province = $('province').value;
   const focus = $('focus').value;
   const jobs = state.jobs.filter(job => {
+    if (state.tab === 'clue' ? job.role !== 'clue' : job.role === 'clue') return false;
     if (state.tab === 'closing' && !isClosing(job)) return false;
     if (['physician', 'technician'].includes(state.tab) && job.role !== state.tab) return false;
     if (province && job.province !== province) return false;
@@ -224,16 +229,17 @@ function renderJobs() {
   const selectedFilters = Number(Boolean($('province').value)) + Number(Boolean($('focus').value)) + Number($('sort').value !== 'recommended');
   $('more-filter-summary').textContent = selectedFilters ? `已启用 ${selectedFilters} 项` : '地区 · 方向 · 排序';
   $('jobs').replaceChildren(...jobs.map(renderCard));
-  $('result-count').textContent = `当前共 ${state.jobs.length} 条 · 显示 ${jobs.length} 条`;
+  const total = state.jobs.filter(job => state.tab === 'clue' ? job.role === 'clue' : job.role !== 'clue').length;
+  $('result-count').textContent = `${state.tab === 'clue' ? '待核实线索' : '岗位'}共 ${total} 条 · 显示 ${jobs.length} 条`;
   $('empty-state').hidden = jobs.length > 0;
   $('retry').hidden = true;
-  $('reset-filters').hidden = state.jobs.length === 0;
-  if (!jobs.length && state.jobs.length) {
+  $('reset-filters').hidden = total === 0;
+  if (!jobs.length && total) {
     $('empty-title').textContent = '没有符合当前筛选的岗位';
     $('empty-description').textContent = '可以缩短关键词、调整地区或影像方向，也可以清除全部筛选后查看。';
   } else if (!jobs.length) {
-    $('empty-title').textContent = '本次采集暂无可展示的岗位';
-    $('empty-description').textContent = '空列表不代表没有招聘。部分来源、附件或报名条件可能尚未核验，请查看下方来源诊断，并关注官方最新公告。';
+    $('empty-title').textContent = state.tab === 'clue' ? '本次暂无可展示的待核实线索' : '本次暂无可展示的岗位';
+    $('empty-description').textContent = '空列表不代表没有招聘。可切换岗位与待核实线索标签；部分来源、附件或报名条件尚未核验，请查看下方来源诊断。';
   }
 }
 
@@ -255,7 +261,8 @@ async function load() {
     state.report = null;
     state.jobs = [];
     $('report-date').textContent = '暂未取得有效的采集日期与生成时间';
-    for (const id of ['active-count', 'new-count', 'closing-count', 'tab-count-all', 'tab-count-physician', 'tab-count-technician', 'tab-count-closing']) $(id).textContent = '—';
+    for (const id of ['active-count', 'new-count', 'closing-count', 'tab-count-all', 'tab-count-physician', 'tab-count-technician', 'tab-count-closing', 'tab-count-clue']) $(id).textContent = '—';
+    $('lead-summary').textContent = '';
     $('coverage-dot').className = 'status-dot partial';
     $('coverage-count').textContent = '状态未取得';
     $('coverage-brief').textContent = '来源状态暂未取得，无法判断本次覆盖范围或有无招聘，请稍后重试。';
