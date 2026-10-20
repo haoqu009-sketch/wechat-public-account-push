@@ -44,8 +44,9 @@ export function documentWorker(bytes, format, options = {}) {
 }
 
 export function attachmentPurpose(file) {
+  if (/报名(?:信息|登记|申请)?表|应届毕业生证明|专家推荐信|资格(?:审查|复审)表|政审表|招聘联系电话|登记表|承诺书|诚信|同意报考|推荐表|专业参考目录/.test(file.title)
+    && !/岗位计划|岗位需求|岗位目录/.test(file.title)) return 'optional';
   if (/岗位|计划|需求|职位|条件|资格|招聘简章|招聘公告/.test(file.title) && !/报名表|登记表|承诺|专业参考目录/.test(file.title)) return 'required';
-  if (/报名表|登记表|承诺书|诚信|同意报考|推荐表|专业参考目录/.test(file.title)) return 'optional';
   return 'unknown';
 }
 
@@ -78,7 +79,7 @@ export async function parseAttachment(bytes, file, options = {}) {
   // Do not silently interpret footnotes as if they belonged to every position.
   if (issues.length) complete = false;
   const notes = document.pages.map(page => page.notes || '').filter(text => /报考|应聘|须|必须|不得|仅限|截止|取得|注[：:]/.test(text));
-  return { rows, clues, notes, complete, method: document.method, issues: [...new Set(issues)] };
+  return { rows, clues, notes, complete, ocr: document.pages.some(page => page.ocr), method: document.method, issues: [...new Set(issues)] };
 }
 
 // Download failures, parsing failures and queued files remain separate ledger states.
@@ -120,7 +121,7 @@ export async function processAttachments(page, request, hosts, options = {}) {
       const parsed = structuredClone(await cachedAttachmentParse(options.parseCacheDir, key, () => parseAttachment(file.bytes, entry, options)));
       if (file.manual) { parsed.complete = false; parsed.issues.push('官方附件本轮未能下载，使用手动补充原件，尚未与官网当前文件比对'); }
       entry.rows = parsed.rows.length; entry.method = parsed.method;
-      entry.status = parsed.complete ? 'parsed' : parsed.rows.length ? 'partial' : parsed.clues.some(clue => clue.method === 'ocr') ? 'ocr_review' : 'review';
+      entry.status = parsed.complete ? 'parsed' : parsed.rows.length ? 'partial' : parsed.ocr || parsed.clues.some(clue => clue.method === 'ocr') ? 'ocr_review' : 'review';
       entry.reason = parsed.complete ? `已读取原生单元格，提取影像岗位${entry.rows}行` : parsed.issues.join('；') || '未取得可确认的岗位表格，需要检查原件';
       rows.push(...parsed.rows.map(row => ({ ...row, url: entry.url, title: entry.title, notes: (parsed.notes || []).join('；').slice(0, 1200), incomplete: !parsed.complete })));
       clues.push(...parsed.clues.map(clue => ({ ...clue, url: entry.url, title: entry.title })));

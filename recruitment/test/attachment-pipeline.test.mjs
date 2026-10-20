@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import JSZip from 'jszip';
 import ExcelJS from 'exceljs';
-import { gridRecords, documentWorker, parseAttachment, processAttachments } from '../attachment-pipeline.mjs';
+import { gridRecords, documentWorker, parseAttachment, processAttachments, attachmentPurpose } from '../attachment-pipeline.mjs';
 import { pageData, jobFrom, chinaDate } from '../core.mjs';
 import { verifyJobs } from '../verification.mjs';
 import { createPublicReport } from '../public-report.mjs';
@@ -82,6 +82,13 @@ test('下载403停止同主机后续附件，失败和排队状态不同，辅�
   const result = await processAttachments({ ...page, attachments: [0, 1].map(index => ({ url: `https://hospital.example/${index}.xlsx`, format: 'xlsx', title: `岗位${index}.xlsx` })) }, async () => { count++; throw new Error('HTTP 403'); }, source.allowedHosts);
   assert.equal(count, 1); assert.equal(result.entries[0].status, 'failed'); assert.equal(result.entries[1].status, 'queued');
   assert.match(result.entries[0].reason, /403/);
+});
+
+test('实际公告中的报名信息表、推荐信、证明及资格审查表不误报岗位附件缺口', () => {
+  for (const title of ['长期公开招聘编制内工作人员报名信息表.xls', '公开招聘工作人员专家推荐信.doc', '应届毕业生证明.docx', '招聘应聘人员政审表.doc', '招聘资格审查表（硕士）.doc', '招聘联系电话.docx']) {
+    assert.equal(attachmentPurpose({ title }), 'optional', title);
+  }
+  assert.equal(attachmentPurpose({ title: '招聘岗位计划及资格条件表.xlsx' }), 'required');
 });
 
 test('OCR、纯文字和缺列PDF一律不能升级为已核验的岗位行', async () => {

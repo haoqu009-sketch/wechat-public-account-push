@@ -163,7 +163,7 @@ function renderAttachments(container, entries) {
   if (!Array.isArray(entries) || !entries.length) return;
   const pending = entries.filter(item => !['parsed', 'optional'].includes(item.status)).length;
   const details = element('details', 'attachment-ledger');
-  details.append(element('summary', '', `附件清单 · ${entries.length}份${pending ? `，${pending}份未完成` : '，岗位材料已处理'}`));
+  details.append(element('summary', '', `附件清单 · ${entries.length}份${pending ? `，${pending}份未完成` : '，无待处理项'}`));
   const list = element('ul', 'attachment-items');
   const labels = { parsed: '已解析', optional: '辅助材料', queued: '排队中', partial: '部分解析', review: '需要复核', ocr_review: 'OCR待复核', failed: '未能读取' };
   for (const entry of entries) {
