@@ -171,7 +171,17 @@ schedule:
   ]
 }```
 
-### 天行数据“每日英语”（推荐）
+### 2026-10-24：恢复生活日报
+
+招聘推送因新增有效岗位不足停止定时发送，原招聘状态及网站历史保留。生活日报使用独立工作流 `lifestyle-wechat-push`，恢复原定北京时间 05:17（GitHub 调度仍可能延迟），不需要改动既有 Secrets。
+
+定时任务由仓库变量 `LIFESTYLE_PUSH_ENABLED=true` 启用。启用前先手动运行工作流，保持 `send_now=false`：程序读取微信保存的真实模板，确认不是招聘模板、8个字段完整，并获取当日天气、中英每日一句、相伴及周年纪念日、诗词及出处；校验模式不调用消息发送接口。只有定时事件或明确选择 `send_now=true` 才发送。缺失天气、纪念日或模板不匹配时停止发送，不发送空壳或沿用招聘标签。
+
+程序沿用当前 `qinglong-push.js` 的数据源、备用句库和8字段排版，不添加天气提醒、不添加生日。原 `medical-imaging-recruitment` 已去掉 GitHub 定时触发；服务器招聘发送计时器也须保持停用。`RECRUITMENT_SENDER_OWNER=server` 保持不变，防止意外重新启用 GitHub 招聘发送路径。不要操作服务器上其他项目的推送计时器。
+
+只读校验命令：`node qinglong/lifestyle-runner.cjs --validate-only`。恢复保护测试：`node --test qinglong/lifestyle-validation.test.cjs`。命令必须通过受保护环境注入现有 Secrets，不要把密钥写在命令行或日志中。
+
+### 天行数据“每日英语”（接口说明）
 
 默认使用天行数据的“每日英语”接口，直接获取英文原句、中文释义与出处。推荐新建单独的 GitHub Secret `TIAN_API_KEY`，无需编辑或覆盖现有 `ALL_CONFIG`。如确有完整配置备份，也兼容在 `ALL_CONFIG` JSON 中加入：
 

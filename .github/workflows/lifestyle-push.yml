@@ -1,0 +1,54 @@
+name: lifestyle-wechat-push
+
+on:
+  workflow_dispatch:
+    inputs:
+      send_now:
+        description: '立即发送生活日报；默认仅验证配置和真实内容，不发微信'
+        type: boolean
+        default: false
+  schedule:
+    # 恢复原定北京时间05:17；GitHub定时任务可能延迟，不承诺准点送达。
+    - cron: '17 21 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifestyle-wechat-push
+  cancel-in-progress: false
+
+jobs:
+  lifestyle:
+    # 首次只读验收成功后再开启定时；手动校验不受开关限制。
+    if: github.event_name == 'workflow_dispatch' || vars.LIFESTYLE_PUSH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: 验证恢复保护逻辑
+        run: node --test qinglong/lifestyle-validation.test.cjs
+      - name: 安装原版生活日报依赖
+        run: npm install --prefix qinglong --omit=dev --no-audit --no-fund --package-lock=false
+      - name: 校验旧模板并生成完整内容（手动默认不发消息）
+        run: |
+          if [ "$SEND_LIFESTYLE" = "true" ]; then
+            node qinglong/lifestyle-runner.cjs --send
+          else
+            node qinglong/lifestyle-runner.cjs --validate-only
+          fi
+        env:
+          SEND_LIFESTYLE: ${{ github.event_name == 'schedule' || inputs.send_now }}
+          ALL_CONFIG: ${{ secrets.ALL_CONFIG }}
+          TIAN_API_KEY: ${{ secrets.TIAN_API_KEY }}
+          USER_OPENID: ${{ secrets.USER_OPENID }}
+          ADDITIONAL_USER_OPENIDS: ${{ secrets.ADDITIONAL_USER_OPENIDS }}
+          WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+          PERSONAL_DATES: ${{ secrets.PERSONAL_DATES }}
+          USER_CITY: 哈尔滨
+          WEATHER_CITY_CODE: '101050101'

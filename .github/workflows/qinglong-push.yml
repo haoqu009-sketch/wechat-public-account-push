@@ -23,9 +23,7 @@ on:
         description: '仅发布真实采集报告和招聘网页，不发送微信、不改变岗位去重记录'
         type: boolean
         default: false
-  schedule:
-    # 每天北京时间 07:30；GitHub Actions 定时任务可能延迟。
-    - cron: '30 23 * * *'
+  # 招聘质量未达要求，按用户要求停止定时推送；仅保留手动诊断。
 
 permissions:
   contents: write

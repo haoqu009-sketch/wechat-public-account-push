@@ -1614,6 +1614,7 @@ module.exports = {
   // 导出测试用的函数
   weatherService,
   pushService,
+  dataAggregationService,
   buildWechatSafeTemplateData,
   splitWechatField,
   dateUtils,

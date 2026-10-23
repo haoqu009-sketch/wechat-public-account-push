@@ -79,6 +79,8 @@ api.weixin.qq.com
 
 ## GitHub Actions 部署（接管前或显式回退使用）
 
+> 2026-10-24 状态：因持续新增有效岗位不足，按用户要求停止招聘定时推送，恢复生活日报。以下为历史部署说明，不代表当前仍在发送。服务器 `recruitment-collector-daily.timer` 已停用，GitHub 招聘工作流也已去掉定时触发；不要为恢复生活日报而清空招聘去重状态或重置 `RECRUITMENT_SENDER_OWNER`。生活日报见 [恢复说明](../qinglong/README.md)。
+
 已有 `.github/workflows/qinglong-push.yml` 已改为招聘工作流，每天北京时间07:30运行；旧版 `weixin-push-on-time.yml` 只保留手动触发，避免继续定时发送生活内容。GitHub的定时任务可能延迟，并且工作流需要位于默认分支且Actions已启用。
 
 正式任务使用标准 `macos-latest` GitHub托管环境，不需要个人电脑保持开机。2026-10-19的无密钥只读对比中，Ubuntu可采集2/6来源，Windows和macOS均为4/6；这不是持续可达性保证，仍需查看每次来源报告。可手动运行 `recruitment-hosted-network-check` 复查三个环境；该诊断不发送微信、不修改远程去重记录。
