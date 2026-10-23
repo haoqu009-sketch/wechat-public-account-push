@@ -26,3 +26,29 @@ test('rejects missing anniversary', () => assert.throws(() => validateData(data,
 test('rejects birthday substitution', () => assert.throws(() => validateData({...data,n2:{value:'生日还有10天'}},original)))
 test('rejects truncated English', () => assert.throws(() => validateData({...data,q2:{value:'Make time...'}},original)))
 test('rejects overlong field', () => assert.throws(() => validateData({...data,q1:{value:'长'.repeat(61)}},original)))
+
+const { getAccessToken, listTemplates } = require('./lifestyle-wechat.cjs')
+test('read-only WeChat client uses no message endpoint', async () => {
+  const calls = []
+  const fetcher = async (url, options) => {
+    calls.push({url,options})
+    return {ok:true,json:async()=>url.includes('/token?') ? {access_token:'fake-token'} : {template_list:[{content}]}}
+  }
+  const token = await getAccessToken({APP_ID:'fake-app',APP_SECRET:'fake-secret'},fetcher)
+  const templates = await listTemplates(token,fetcher)
+  assert.equal(templates.length,1)
+  assert.equal(calls.length,2)
+  assert.ok(calls.every(call=>call.options.method === undefined && !call.url.includes('/message/')))
+})
+test('network failures never reveal credential-bearing URLs', async () => {
+  await assert.rejects(getAccessToken({APP_ID:'fake-app',APP_SECRET:'fake-secret'}, async url=>{throw new Error(url)}), error=>{
+    assert.ok(!/fake-secret|https:/.test(error.message))
+    return true
+  })
+})
+test('provider errors never echo raw response content', async () => {
+  await assert.rejects(listTemplates('fake-token',async()=>({ok:true,json:async()=>({errcode:40001,errmsg:'fake-token'})})), /错误码 40001/)
+})
+test('missing template list fails closed', async () => {
+  await assert.rejects(listTemplates('fake-token',async()=>({ok:true,json:async()=>({})})), /未返回可用模板列表/)
+})

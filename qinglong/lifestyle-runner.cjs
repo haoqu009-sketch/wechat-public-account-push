@@ -1,5 +1,6 @@
 // Default is strictly read-only: no message API call unless --send is explicit.
 const { validateTemplate, validateData } = require('./lifestyle-validation.cjs')
+const { getAccessToken, listTemplates } = require('./lifestyle-wechat.cjs')
 
 async function quietly(task) {
   const previous = { log: console.log, warn: console.warn, error: console.error }
@@ -19,20 +20,10 @@ async function main() {
   const users = legacy.ALL_CONFIG.USER_INFO
   if (users.some(user => !user.id || !user.wechatTemplateId)) throw new Error('接收人或旧版模板 ID 不完整')
   if (new Set(users.map(user => user.id)).size !== users.length) throw new Error('接收人存在重复，未发送消息')
-  const { getAccessToken } = await import('../recruitment/wechat.mjs')
-  const token = await getAccessToken({ appId: config.APP_ID, appSecret: config.APP_SECRET })
-  let response
-  try {
-    response = await fetch(`https://api.weixin.qq.com/cgi-bin/template/get_all_private_template?access_token=${encodeURIComponent(token)}`, {
-      redirect: 'error', signal: AbortSignal.timeout(20000),
-    })
-  } catch { throw new Error('微信模板读取失败，受保护请求地址未记录') }
-  if (!response.ok) throw new Error(`微信模板接口 HTTP ${response.status}`)
-  let templates
-  try { templates = await response.json() } catch { throw new Error('微信模板接口响应格式异常') }
-  if (!Array.isArray(templates.template_list)) throw new Error('微信接口未返回可用模板列表')
+  const token = await getAccessToken(config)
+  const templates = await listTemplates(token)
   for (const id of new Set(users.map(user => user.wechatTemplateId))) {
-    validateTemplate(templates.template_list.find(template => template.template_id === id))
+    validateTemplate(templates.find(template => template.template_id === id))
   }
   const prepared = []
   for (const [index, user] of users.entries()) {
@@ -59,7 +50,7 @@ async function main() {
 main().catch(error => {
   // Only explicitly authored validation messages are logged; never dump error objects or request URLs.
   const message = String(error?.message || '')
-  console.error(/^(ALL_CONFIG |旧版|接收人|微信|生活|当前天气|相伴|纪念日|每日一句|诗词|部分生活|不支持|发送和)/.test(message)
+  console.error(/^(ALL_CONFIG |旧版|配置指向招聘模板|接收人|微信|生活|当前天气|相伴|纪念日|每日一句|诗词|部分生活|不支持|发送和)/.test(message)
     && !/https?:\/\//.test(message) ? message : '生活日报校验失败；受保护输出已隐藏，未继续发送。')
   process.exitCode = 1
 })
