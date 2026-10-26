@@ -2,7 +2,9 @@ name: lifestyle-schedule-audit
 
 on:
   workflow_dispatch:
-  # Observation ended: manual-only evidence, no remaining automatic schedule.
+  schedule:
+    # Bounded UTC control; Beijing 08:32–08:57 on 2026-10-26 only.
+    - cron: '32,37,42,47,52,57 0 26 10 *'
 
 permissions: {}
 

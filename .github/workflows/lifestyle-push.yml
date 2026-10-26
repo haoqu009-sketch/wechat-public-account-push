@@ -11,6 +11,8 @@ on:
     # 恢复原定北京时间05:17；GitHub定时任务可能延迟，不承诺准点送达。
     # 等价的全星期写法，用于重新登记GitHub定时触发，仍是北京时间05:17。
     - cron: '17 21 * * 0-6'
+    # Temporary automatic-observation slots; production job explicitly excludes these.
+    - cron: '34,39,44,49,54,59 0 26 10 *'
 
 permissions:
   contents: read
@@ -20,6 +22,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  schedule-observation:
+    if: github.event_name == 'schedule' && github.event.schedule == '34,39,44,49,54,59 0 26 10 *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Read-only automatic event evidence, no credentials or messages
+        env:
+          OBSERVED_EVENT: ${{ github.event_name }}
+          OBSERVED_CRON: ${{ github.event.schedule }}
+          OBSERVED_RUN: ${{ github.run_id }}
+        run: |
+          if [ "$(date -u +%Y-%m-%d)" != "2026-10-26" ]; then
+            printf '%s\n' 'SCHEDULE_OBSERVATION_EXPIRED: no work performed'
+            exit 0
+          fi
+          printf 'SCHEDULE_OBSERVATION event=%s utc=%s cron=%s run=%s\n' \
+            "$OBSERVED_EVENT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OBSERVED_CRON" "$OBSERVED_RUN"
   lifestyle:
     # 首次只读验收成功后再开启定时；手动校验不受开关限制。
     if: >-
