@@ -11,8 +11,6 @@ on:
     # 恢复原定北京时间05:17；GitHub定时任务可能延迟，不承诺准点送达。
     # 等价的全星期写法，用于重新登记GitHub定时触发，仍是北京时间05:17。
     - cron: '17 21 * * 0-6'
-    # 临时只读探针，仅2026-10-26 UTC00时段；验收结束立即移除。
-    - cron: '0,5,10,15,20 0 26 10 *'
 
 permissions:
   contents: read
@@ -22,14 +20,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  schedule-probe:
-    if: github.event_name == 'schedule' && github.event.schedule == '0,5,10,15,20 0 26 10 *'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - name: 只读验收GitHub自动调度（不读取密钥、不发送消息）
-        run: date -u '+AUTOMATIC_SCHEDULE_PROBE_OK %Y-%m-%dT%H:%M:%SZ'
   lifestyle:
     # 首次只读验收成功后再开启定时；手动校验不受开关限制。
     if: >-
