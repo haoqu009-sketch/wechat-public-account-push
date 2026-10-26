@@ -55,7 +55,7 @@ jobs:
         with:
           node-version: '24'
       - name: 验证恢复保护逻辑
-        run: node --test qinglong/lifestyle-validation.test.cjs
+        run: node --test qinglong/lifestyle-validation.test.cjs qinglong/lifestyle-workflow.test.cjs
       - name: 安装原版生活日报依赖
         run: npm install --prefix qinglong --omit=dev --no-audit --no-fund --package-lock=false
       - name: 校验旧模板并生成完整内容（手动默认不发消息）
