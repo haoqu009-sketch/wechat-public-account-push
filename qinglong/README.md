@@ -181,6 +181,8 @@ schedule:
 
 10月26日自动调度排查：默认分支确认为master，定时配置位于该分支；提交、授权和手动运行账号一致。已重新登记等价cron并显式启用工作流，08:04:50完成一次 `disabled_manually -> active` 复位。临时只读探针与生活日报发送任务隔离，不读取密钥、不调用消息接口；截至08:10:15仍无 `schedule` 运行记录，随后已移除探针，避免长期额外任务。05:17正式配置保留，自动恢复状态仍待证实，GitHub内部未创建定时事件的具体原因未确定。不要清空Secrets、改微信模板或迁移服务器来冒充本次GitHub验收成功。[GitHub官方排查说明](https://docs.github.com/en/actions/how-tos/troubleshoot-workflows#scheduled-workflow-stopped-running)。
 
+随后按用户要求完成一次正式手动日报 [40248353792](https://github.com/haoqu009-sketch/wechat-public-account-push/actions/runs/40248353792)，两位接收人的微信接口均返回成功；这不代表自动定时恢复。后续本轮独立复核未发现cron、条件或并发配置的语法根因；全新零密钥诊断工作流的手动控制 [40248758387](https://github.com/haoqu009-sketch/wechat-public-account-push/actions/runs/40248758387) 成功，但截至08:22尚无自动事件，不能据此认定永久故障或登记损坏。浏览器只读核验因电脑操作工具无法可靠确认当前URL而被安全机制停止，没有绕过限制；临时诊断的定时入口已移除，仅保留手动取证入口，未额外发送消息。用户选择仅排查GitHub、不迁移服务器、不安排明早回访，本轮未创建任何后续自动化。
+
 定时任务由仓库变量 `LIFESTYLE_PUSH_ENABLED=true` 启用。启用前先手动运行工作流，保持 `send_now=false`：程序读取微信保存的真实模板，确认不是招聘模板、8个字段完整，并获取当日天气、中英每日一句、相伴及周年纪念日、诗词及出处；校验模式不调用消息发送接口。只有定时事件或明确选择 `send_now=true` 才发送。缺失天气、纪念日或模板不匹配时停止发送，不发送空壳或沿用招聘标签。
 
 程序沿用当前 `qinglong-push.js` 的数据源、备用句库和8字段排版，不添加天气提醒、不添加生日。原 `medical-imaging-recruitment` 已去掉 GitHub 定时触发；服务器招聘发送计时器也须保持停用。`RECRUITMENT_SENDER_OWNER=server` 保持不变，防止意外重新启用 GitHub 招聘发送路径。不要操作服务器上其他项目的推送计时器。
